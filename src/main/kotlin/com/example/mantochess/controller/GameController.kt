@@ -29,4 +29,16 @@ class GameController(
         @PathVariable("movement") movement: String) {
         gameService.processGameMovement(gameUuid, movement)
     }
+
+    @PostMapping("/{id}/suggest")
+    fun suggestMovement(
+        @PathVariable("id") gameUuid: String): String {
+        return gameService.suggestGameMovement(gameUuid)
+    }
+
+    @PostMapping("/{id}/suggest-and-play")
+    fun suggestMovementAndPlay(
+        @PathVariable("id") gameUuid: String): String {
+        return gameService.suggestGameMovement(gameUuid, true)
+    }
 }

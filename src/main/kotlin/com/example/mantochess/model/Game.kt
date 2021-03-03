@@ -5,7 +5,6 @@ import java.io.Serializable
 class Game: Serializable {
     val board: Board
     var currentTurnColor = Color.WHITE
-    var advantage = 0
     val castlingKingsideAllowed: MutableMap<Color, Boolean>
     val castlingQueensideAllowed: MutableMap<Color, Boolean>
 
@@ -20,7 +19,6 @@ class Game: Serializable {
         currentTurnColor = copyFromGame.currentTurnColor
         castlingKingsideAllowed = copyFromGame.castlingKingsideAllowed.toMutableMap()
         castlingQueensideAllowed = copyFromGame.castlingQueensideAllowed.toMutableMap()
-        advantage = copyFromGame.advantage
     }
 
     fun makeMovement(movement: CompleteMovementInfo) {
@@ -48,14 +46,15 @@ class Game: Serializable {
             rook.file = 5
         }
 
-        if (isColorAtCheck(currentTurnColor)) {
-            throw InvalidMovementException("King is checked at this position. Please try another move")
+        // Process pawn promotion
+        if (piece.isPawnToBePromoted(Position(piece.rank, piece.file))) {
+            if (movement.promotionPiece == null) {
+                throw InvalidMovementException("Promotion piece must be specified after pawn reaches end of board")
+            }
+            piece.type = movement.promotionPiece
         }
 
         currentTurnColor = if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE
-
-        // Print board after play for debugging
-        board.printBoard()
     }
 
     private fun updateCastlingAbility(pieceMoved: Piece) {
@@ -73,17 +72,23 @@ class Game: Serializable {
         }
     }
 
-    private fun isColorAtCheck(color: Color): Boolean {
+    fun isColorAtCheck(color: Color): Boolean {
         val king = board.pieces[color]!!.find { p -> p.type == PieceType.KING }!!
 
-        val opponentMoves = availableMovementFor(if (color == Color.WHITE) Color.BLACK else Color.WHITE )
-        val checkMove = opponentMoves.find { move -> move.second.rank == king.rank && move.second.file == king.file }
+        val opponentMoves = availableMovementFor(if (color == Color.WHITE) Color.BLACK else Color.WHITE, false)
+        val checkMove = opponentMoves.find { move -> move.to.rank == king.rank && move.to.file == king.file }
         return checkMove != null
     }
 
-    fun availableMovementFor(color: Color): List<Pair<Piece, Position>> {
+    fun availableMovementFor(color: Color, excludeMovementsThatCauseOwnCheck: Boolean = true): List<CompleteMovementInfo> {
         val pieces = board.pieces[color]!!
 
-        return pieces.map { p -> p.availableMovements(this).map { m -> Pair(p, m) } }.flatten()
+        return pieces.map { p -> p.availableMovements(this, excludeMovementsThatCauseOwnCheck) }.flatten()
+    }
+
+    fun getCurrentAdvantage(): Int {
+        val whiteSum = board.pieces[Color.WHITE]!!.fold(0, { acc, piece -> piece.type.value + acc })
+        val blackSum = board.pieces[Color.BLACK]!!.fold(0, { acc, piece -> piece.type.value + acc })
+        return whiteSum - blackSum
     }
 }

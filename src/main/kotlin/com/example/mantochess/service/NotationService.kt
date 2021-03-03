@@ -14,12 +14,12 @@ class NotationService {
         val notationMatcher = notationRegex.matcher(notation)
 
         if (notationMatcher.find()) {
-            val pieceType = getPieceType(notationMatcher.group("piece"))
-            val originFile = convertFile(notationMatcher.group("originFile"), true)
-            val originRank = convertRank(notationMatcher.group("originRank"), true)
+            val pieceType = convertPieceTypeInternal(notationMatcher.group("piece"))
+            val originFile = convertFileInternal(notationMatcher.group("originFile"), true)
+            val originRank = convertRankInternal(notationMatcher.group("originRank"), true)
             val castling = notationMatcher.group("castling")
-            val targetFile = convertFile(notationMatcher.group("targetFile"), castling != null)
-            val targetRank = convertRank(notationMatcher.group("targetRank"), castling != null)
+            val targetFile = convertFileInternal(notationMatcher.group("targetFile"), castling != null)
+            val targetRank = convertRankInternal(notationMatcher.group("targetRank"), castling != null)
             val promotionPiece = getPromotionPieceType(notationMatcher.group("promotionPiece"))
 
             val movements = game.availableMovementFor(game.currentTurnColor)
@@ -42,9 +42,9 @@ class NotationService {
                 val movement = matchingMovements[0]
 
                 return CompleteMovementInfo(
-                    movement.first.type,
-                    Position(movement.first.rank, movement.first.file),
-                    movement.second,
+                    movement.piece,
+                    movement.from,
+                    movement.to,
                     null,
                     promotionPiece,
                     notation)
@@ -54,18 +54,27 @@ class NotationService {
         }
     }
 
-    private fun findMatchingMovements(
-        allMovements: List<Pair<Piece, Position>>, pieceType: PieceType, targetPosition: Position, originRank: Int?, originFile: Int?): List<Pair<Piece, Position>> {
+    fun convertMovementToNotation(movement: CompleteMovementInfo): String {
+        val piece = convertPieceTypeExternal(movement.piece)
+        val targetFile = convertFileExternal(movement.to.file)
+        val targetRank = convertRankExternal(movement.to.rank)
+        val promotionPiece = convertPieceTypeExternal(movement.promotionPiece)
 
-        return allMovements.filter { m ->
-            m.first.type == pieceType &&
-                    m.second.rank == targetPosition.rank &&
-                    m.second.file == targetPosition.file &&
-                    (m.first.rank == originRank || originRank == null) &&
-                    (m.first.file == originFile || originFile == null) }
+        return "$piece$targetFile$targetRank$promotionPiece"
     }
 
-    private fun castling(game: Game, availableMovements: List<Pair<Piece, Position>>, kingsSide: Boolean): CompleteMovementInfo {
+    private fun findMatchingMovements(
+        allMovements: List<CompleteMovementInfo>, pieceType: PieceType, targetPosition: Position, originRank: Int?, originFile: Int?): List<CompleteMovementInfo> {
+
+        return allMovements.filter { m ->
+            m.piece == pieceType &&
+            m.to.rank == targetPosition.rank &&
+            m.to.file == targetPosition.file &&
+            (m.from.rank == originRank || originRank == null) &&
+            (m.from.file == originFile || originFile == null) }
+    }
+
+    private fun castling(game: Game, availableMovements: List<CompleteMovementInfo>, kingsSide: Boolean): CompleteMovementInfo {
         val finalKingPosition =
             if (kingsSide)
                 when(game.currentTurnColor) {
@@ -77,12 +86,9 @@ class NotationService {
                     else -> Position(7, 2)
                 }
 
-        val king =  availableMovements
-            .find { m -> m.first.type == PieceType.KING }!!.first
-
         val castlingMovement = availableMovements
-            .filter { m -> m.first == king }
-            .find { m -> m.second == finalKingPosition }
+            .filter { m -> m.piece == PieceType.KING }
+            .find { m -> m.to == finalKingPosition }
 
         if (castlingMovement == null
             || (!game.castlingQueensideAllowed[game.currentTurnColor]!! && !kingsSide)
@@ -92,7 +98,7 @@ class NotationService {
 
         return CompleteMovementInfo(
             PieceType.KING,
-            Position(king.rank, king.file),
+            castlingMovement.from,
             finalKingPosition,
             if (kingsSide) "King's side castling" else "Queen's side castling",
             null,
@@ -111,7 +117,7 @@ class NotationService {
         }
     }
 
-    private fun getPieceType(piece: String?): PieceType {
+    private fun convertPieceTypeInternal(piece: String?): PieceType {
         return when(piece) {
             null -> PieceType.PAWN
             "B" -> PieceType.BISHOP
@@ -123,7 +129,19 @@ class NotationService {
         }
     }
 
-    private fun convertFile(file: String?, allowNull: Boolean): Int? {
+    private fun convertPieceTypeExternal(pieceType: PieceType?): String {
+        return when(pieceType) {
+            PieceType.PAWN -> ""
+            PieceType.BISHOP -> "B"
+            PieceType.KNIGHT -> "N"
+            PieceType.ROOK -> "R"
+            PieceType.QUEEN -> "Q"
+            PieceType.KING -> "K"
+            else -> ""
+        }
+    }
+
+    private fun convertFileInternal(file: String?, allowNull: Boolean): Int? {
         return when(file) {
             "a" -> 0
             "b" -> 1
@@ -138,7 +156,20 @@ class NotationService {
         }
     }
 
-    private fun convertRank(rank: String?, allowNull: Boolean): Int? {
+    private fun convertFileExternal(file: Int): String {
+        return when(file) {
+            0 -> "a"
+            1 -> "b"
+            2 -> "c"
+            3 -> "d"
+            4 -> "e"
+            5 -> "f"
+            6 -> "g"
+            else -> "h"
+        }
+    }
+
+    private fun convertRankInternal(rank: String?, allowNull: Boolean): Int? {
         return when(rank) {
             "1" -> 0
             "2" -> 1
@@ -150,6 +181,19 @@ class NotationService {
             "8" -> 7
             null -> if (allowNull) null else throw InvalidMovementException("Rank position is mandatory")
             else -> throw InvalidMovementException("Invalid file $rank")
+        }
+    }
+
+    private fun convertRankExternal(rank: Int): String {
+        return when(rank) {
+            0 -> "1"
+            1 -> "2"
+            2 -> "3"
+            3 -> "4"
+            4 -> "5"
+            5 -> "6"
+            6 -> "7"
+            else -> "8"
         }
     }
 }
