@@ -75,28 +75,28 @@ class Board: Serializable {
     }
 
     fun printBoard() {
-        println("----------")
+        println("--------------------------")
         for (rank in 7 downTo 0) {
             print("|")
             for (file in 0..7) {
                 val piece = pieceAt(rank, file)
                 if (piece.isEmpty) {
-                    print(" ")
+                    print(" . ")
                 } else {
                     val printChar = when(piece.get().type) {
-                        PieceType.PAWN -> "p"
-                        PieceType.ROOK -> "r"
-                        PieceType.KNIGHT -> "n"
-                        PieceType.BISHOP -> "b"
-                        PieceType.QUEEN -> "q"
-                        PieceType.KING -> "k"
+                        PieceType.PAWN -> " p "
+                        PieceType.ROOK -> " r "
+                        PieceType.KNIGHT -> " n "
+                        PieceType.BISHOP -> " b "
+                        PieceType.QUEEN -> " q "
+                        PieceType.KING -> " k "
                     }
                     print(if (piece.get().color == Color.WHITE) printChar.toUpperCase() else printChar)
                 }
             }
             println("|")
         }
-        println("----------")
+        println("--------------------------")
     }
 
 }
