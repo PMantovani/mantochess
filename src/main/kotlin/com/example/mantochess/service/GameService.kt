@@ -45,7 +45,11 @@ class GameService(
             return Pair(game.getCurrentAdvantage(), null)
         }
 
-        val movements = game.availableMovementFor(game.currentTurnColor)
+        val unsortedMovements = game.availableMovementFor(game.currentTurnColor)
+
+        // Sorting movement first by pieces that would be captured enhances alpha-beta pruning algorithm,
+        // as those movements are more likely to be the best ones, so pruning occurs more often
+        val movements = unsortedMovements.sortedBy { m -> game.board.pieceAt(m.to.rank, m.to.file).isEmpty }
 
         if (movements.isEmpty()) {
             // If no movements are found, this means it's checkmate.
