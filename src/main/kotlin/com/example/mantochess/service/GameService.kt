@@ -24,7 +24,10 @@ class GameService(
     fun suggestGameMovement(gameUuid: String, shouldPlayMovement: Boolean = false): String {
         val game = getGameFromUuid(gameUuid)
 
-        val suggestedMovement = suggestGameMovementAtDepth(game, 0, Int.MIN_VALUE, Int.MAX_VALUE)
+        val countMap = HashMap<Int, Int>()
+
+        val suggestedMovement = suggestGameMovementAtDepth(game, 0, Int.MIN_VALUE, Int.MAX_VALUE, countMap)
+        println("Depth movements $countMap")
         println("Game advantage: ${suggestedMovement.first}")
         println("Suggested move: ${suggestedMovement.second}")
         return if (suggestedMovement.second == null) {
@@ -37,7 +40,8 @@ class GameService(
         }
     }
 
-    private fun suggestGameMovementAtDepth(game: Game, currentDepth: Int, alphaParam: Int, betaParam: Int): Pair<Int, CompleteMovementInfo?> {
+    private fun suggestGameMovementAtDepth(game: Game, currentDepth: Int, alphaParam: Int, betaParam: Int, countMap: MutableMap<Int, Int>
+        ): Pair<Int, CompleteMovementInfo?> {
         var alpha = alphaParam
         var beta = betaParam
 
@@ -52,8 +56,16 @@ class GameService(
         val movements = unsortedMovements.sortedBy { m -> game.board.pieceAt(m.to.rank, m.to.file).isEmpty }
 
         if (movements.isEmpty()) {
-            // If no movements are found, this means it's checkmate.
-            return Pair(if (game.currentTurnColor == Color.WHITE) -PieceType.KING.value else PieceType.KING.value, null)
+            // If no movements are found, this means it's checkmate or stalemate, depending on whether the current turn
+            // is at check.
+            return if (game.isColorAtCheck(game.currentTurnColor)) {
+                var checkmateValue = PieceType.KING.value
+                checkmateValue += ((maxDepth - currentDepth) * 10) // Increases checkmate value for earlier checkmates
+                checkmateValue *= if (game.currentTurnColor == Color.WHITE) -1 else 1
+                Pair(checkmateValue, null)
+            } else {
+                Pair(0, null)
+            }
         }
 
         if (game.currentTurnColor == Color.WHITE) {
@@ -63,7 +75,9 @@ class GameService(
                 val cloneGame = Game(game)
                 cloneGame.makeMovement(movement)
 
-                val suggestedMoveToOpponent = suggestGameMovementAtDepth(cloneGame, currentDepth + 1, alpha, beta)
+                countMap[currentDepth] = (countMap[currentDepth]?: 0) + 1
+
+                val suggestedMoveToOpponent = suggestGameMovementAtDepth(cloneGame, currentDepth + 1, alpha, beta, countMap)
 
                 value = if (value.first > suggestedMoveToOpponent.first) value else Pair(suggestedMoveToOpponent.first, movement)
                 alpha = Math.max(alpha, value.first)
@@ -80,7 +94,9 @@ class GameService(
                 val cloneGame = Game(game)
                 cloneGame.makeMovement(movement)
 
-                val suggestedMoveToOpponent = suggestGameMovementAtDepth(cloneGame, currentDepth + 1, alpha, beta)
+                countMap[currentDepth] = (countMap[currentDepth]?: 0) + 1
+
+                val suggestedMoveToOpponent = suggestGameMovementAtDepth(cloneGame, currentDepth + 1, alpha, beta, countMap)
 
                 value = if (value.first < suggestedMoveToOpponent.first) value else Pair(suggestedMoveToOpponent.first, movement)
                 beta = Math.min(beta, value.first)
