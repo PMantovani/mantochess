@@ -1,6 +1,7 @@
 package com.example.mantochess.model
 
 import java.io.Serializable
+import kotlin.math.abs
 
 class Game: Serializable {
     val board: Board
@@ -31,12 +32,36 @@ class Game: Serializable {
         val pieceCaptured = board.pieceAt(movement.to.rank, movement.to.file)
         if (pieceCaptured.isPresent) {
             board.pieces[pieceCaptured.get().color]!!.remove(pieceCaptured.get())
+            if (pieceCaptured.get().type == PieceType.KING) {
+                println("capturing king")
+            }
         }
 
         updateCastlingAbility(piece)
 
         piece.rank = movement.to.rank
         piece.file = movement.to.file
+
+        // Records last en passant square to process pawns there
+        val lastEnPassantTarget = enPassantTarget
+
+        // Enables en passant square if moving pawn two squares
+        enPassantTarget = if (movement.piece == PieceType.PAWN && abs(movement.to.rank - movement.from.rank) == 2) {
+            Position(
+                if (piece.color == Color.WHITE) movement.from.rank + 1 else movement.from.rank - 1,
+                movement.from.file)
+        } else {
+            null
+        }
+
+        // Process en passant movement
+        if (movement.piece == PieceType.PAWN && movement.to == enPassantTarget) {
+            val enPassantPawnPosition = Position(
+                if (piece.color == Color.WHITE) movement.to.rank - 1 else movement.to.rank + 1,
+                movement.to.file)
+            val enPassantPieceCaptured = board.pieceAt(enPassantPawnPosition.rank, enPassantPawnPosition.file)
+            board.pieces[enPassantPieceCaptured.get().color]!!.remove(enPassantPieceCaptured.get())
+        }
 
         // Process castling
         var castlingRook: Piece? = null
@@ -71,10 +96,15 @@ class Game: Serializable {
         castlingRook?.let {
             piecesToBeReprocessed.add(castlingRook)
             rookSquaresInCastling.forEach { rookSquares -> piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(rookSquares)) }
-
         }
         piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(movement.from))
         piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(movement.to))
+        if (enPassantTarget != null) {
+            piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(enPassantTarget!!))
+        }
+        if (lastEnPassantTarget != null) {
+            piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(lastEnPassantTarget))
+        }
         if (castlingKingsideAllowed[currentTurnColor]!! || castlingQueensideAllowed[currentTurnColor]!!) {
             // If castling is still available, reprocess kings movement every time
             val king = board.pieces[currentTurnColor]!!.find { p -> p.type == PieceType.KING }!!
@@ -113,14 +143,10 @@ class Game: Serializable {
     }
 
     fun isColorAtCheck(color: Color): Boolean {
-        val king = board.pieces[color]!!.find { p -> p.type == PieceType.KING }
-
-        if (king == null) {
-            println("king is null")
-        }
+        val king = board.pieces[color]!!.find { p -> p.type == PieceType.KING }!!
 
         val opponentMoves = availableMovementsFor(if (color == Color.WHITE) Color.BLACK else Color.WHITE, false)
-        val checkMove = opponentMoves.find { move -> move.to.rank == king!!.rank && move.to.file == king.file }
+        val checkMove = opponentMoves.find { move -> move.to.rank == king.rank && move.to.file == king.file }
         return checkMove != null
     }
 

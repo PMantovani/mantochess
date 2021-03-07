@@ -13,7 +13,8 @@ class GameService(
     private val notationService: NotationService,
     private val cacheService: CacheService) {
 
-    private val maxDepth = 5
+    private val maxDepth = 4
+    private val enableAlphaBetaPruning = true
 
     fun processGameMovement(gameUuid: String, notation: String): Game {
         val game = getGameFromUuid(gameUuid)
@@ -87,7 +88,7 @@ class GameService(
                 value = if (value.first > suggestedMoveToOpponent.first) value else Pair(suggestedMoveToOpponent.first, movement)
                 alpha = Math.max(alpha, value.first)
 
-                if (alpha >= beta) {
+                if (enableAlphaBetaPruning && alpha >= beta) {
                     break
                 }
             }
@@ -106,7 +107,7 @@ class GameService(
                 value = if (value.first < suggestedMoveToOpponent.first) value else Pair(suggestedMoveToOpponent.first, movement)
                 beta = Math.min(beta, value.first)
 
-                if (beta <= alpha) {
+                if (enableAlphaBetaPruning && beta <= alpha) {
                     break
                 }
             }

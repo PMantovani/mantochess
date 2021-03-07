@@ -30,32 +30,23 @@ class Piece: Serializable {
         return pseudoLegalMovements.filter { movement -> !movement.isMovementBlocked && !movementCauseOwnCheck(game, movement) }
     }
 
-    fun reprocessAvailableMovements(game: Game, includeCastling: Boolean = true) {
+    fun reprocessAvailableMovements(game: Game) {
         pseudoLegalMovements = when(type) {
             PieceType.PAWN -> pawnMovements(game, game.board)
             PieceType.ROOK -> rookMovements(game.board)
             PieceType.KNIGHT -> knightMovements(game.board)
             PieceType.BISHOP -> bishopMovements(game.board)
             PieceType.QUEEN -> queenMovements(game.board)
-            PieceType.KING -> kingMovements(game, includeCastling)
+            PieceType.KING -> kingMovements(game)
         }
     }
 
     private fun movementCauseOwnCheck(game: Game, movement: Movement): Boolean {
         // Copy game to check move to avoid mutability
         val cloneGame = Game(game)
+        cloneGame.makeMovement(movement)
 
-        val currentPieceAtTargetSquare = cloneGame.board.pieceAt(movement.to.rank, movement.to.file)
-        if (currentPieceAtTargetSquare.isPresent) {
-            cloneGame.board.pieces[currentPieceAtTargetSquare.get().color]!!.remove(currentPieceAtTargetSquare.get())
-        }
-
-        val clonePiece = cloneGame.board.pieceAt(rank, file).get()
-
-        clonePiece.rank = movement.to.rank
-        clonePiece.file = movement.to.file
-
-        return cloneGame.isColorAtCheck(cloneGame.currentTurnColor)
+        return cloneGame.isColorAtCheck(game.currentTurnColor)
     }
 
     private fun isAttackingSquare(square: Position): Boolean {
@@ -86,18 +77,15 @@ class Piece: Serializable {
         }
 
         // Capturing diagonals
-        var diagonalPiece = board.pieceAt(rank + direction, file + 1)
-        var isMovementBlocked = diagonalPiece.isEmpty || diagonalPiece.get().color == color
-        var target = Position(rank + direction, file + 1)
-        movements.addAll(getPawnMovementPromotion(target, isMovementBlocked))
+        val diagonalPosition = Position(rank + direction, file + 1)
+        var diagonalPiece = board.pieceAt(diagonalPosition.rank, diagonalPosition.file)
+        var isMovementBlocked = game.enPassantTarget != diagonalPosition  && (diagonalPiece.isEmpty || diagonalPiece.get().color == color)
+        movements.addAll(getPawnMovementPromotion(diagonalPosition, isMovementBlocked))
 
-
-        diagonalPiece = board.pieceAt(rank + direction, file - 1)
-        isMovementBlocked = diagonalPiece.isEmpty || diagonalPiece.get().color == color
-        target = Position(rank + direction, file - 1)
-        movements.addAll(getPawnMovementPromotion(target, isMovementBlocked))
-
-        // TODO: Add en-passant movement
+        val inverseDiagonalPosition = Position(rank + direction, file -1)
+        diagonalPiece = board.pieceAt(inverseDiagonalPosition.rank, inverseDiagonalPosition.file)
+        isMovementBlocked = game.enPassantTarget != inverseDiagonalPosition && (diagonalPiece.isEmpty || diagonalPiece.get().color == color)
+        movements.addAll(getPawnMovementPromotion(inverseDiagonalPosition, isMovementBlocked))
 
         return movements
     }
@@ -157,22 +145,20 @@ class Piece: Serializable {
         return movements
     }
 
-    private fun kingMovements(game: Game, includeCastling: Boolean): List<Movement> {
+    private fun kingMovements(game: Game): List<Movement> {
         val movements = mutableListOf<Movement>()
-        movements.addAll(iterativeMovements(game.board, -1, 0, MovementDirection.VERTICAL))
-        movements.addAll(iterativeMovements(game.board, 0, 1, MovementDirection.VERTICAL))
-        movements.addAll(iterativeMovements(game.board, -1, 0, MovementDirection.HORIZONTAL))
-        movements.addAll(iterativeMovements(game.board, 0, 1, MovementDirection.HORIZONTAL))
-        movements.addAll(iterativeMovements(game.board, -1, 0, MovementDirection.DIAGONAL))
-        movements.addAll(iterativeMovements(game.board, 0, 1, MovementDirection.DIAGONAL))
-        movements.addAll(iterativeMovements(game.board, -1, 0, MovementDirection.INVERSE_DIAGONAL))
-        movements.addAll(iterativeMovements(game.board, 0, 1, MovementDirection.INVERSE_DIAGONAL))
+        movements.addAll(iterativeMovements(game.board, -1, -1, MovementDirection.VERTICAL))
+        movements.addAll(iterativeMovements(game.board, 1, 1, MovementDirection.VERTICAL))
+        movements.addAll(iterativeMovements(game.board, -1, -1, MovementDirection.HORIZONTAL))
+        movements.addAll(iterativeMovements(game.board, 1, 1, MovementDirection.HORIZONTAL))
+        movements.addAll(iterativeMovements(game.board, -1, -1, MovementDirection.DIAGONAL))
+        movements.addAll(iterativeMovements(game.board, 1, 1, MovementDirection.DIAGONAL))
+        movements.addAll(iterativeMovements(game.board, -1, -1, MovementDirection.INVERSE_DIAGONAL))
+        movements.addAll(iterativeMovements(game.board, 1, 1, MovementDirection.INVERSE_DIAGONAL))
 
         // Castling logic
-        if (includeCastling) {
-            movements.addAll(kingsideCastlingMovement(game))
-            movements.addAll(queensideCastlingMovement(game))
-        }
+        movements.addAll(kingsideCastlingMovement(game))
+        movements.addAll(queensideCastlingMovement(game))
 
         return movements
     }
@@ -217,8 +203,7 @@ class Piece: Serializable {
             // Check if we are still inside the boundaries of the game and it's not a movement to the same square.
             // Otherwise skip movement.
             if (nextCoordinates.rank < Board.MINIMUM_INDEX || nextCoordinates.rank > Board.MAXIMUM_INDEX
-                || nextCoordinates.file < Board.MINIMUM_INDEX || nextCoordinates.file > Board.MAXIMUM_INDEX
-                || (nextCoordinates.rank == rank && nextCoordinates.file == file)) {
+                || nextCoordinates.file < Board.MINIMUM_INDEX || nextCoordinates.file > Board.MAXIMUM_INDEX) {
                 break
             }
 

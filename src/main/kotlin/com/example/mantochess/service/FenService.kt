@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service
 import java.lang.Integer.parseInt
 
 @Service
-class FenService {
+class FenService(val notationService: NotationService) {
 
     fun convertFenToGame(fen: String): Game {
 
@@ -98,6 +98,11 @@ class FenService {
             game.castlingKingsideAllowed[Color.BLACK] = castlingAbility.contains('k')
             game.castlingQueensideAllowed[Color.WHITE] = castlingAbility.contains('Q')
             game.castlingQueensideAllowed[Color.BLACK] = castlingAbility.contains('q')
+
+            game.enPassantTarget = if (enPassetTargetSquare == "-") null else
+                Position(
+                    notationService.convertRankInternal(enPassetTargetSquare[1].toString(), false)!!,
+                    notationService.convertFileInternal(enPassetTargetSquare[0].toString(), false)!!)
         }
 
     }

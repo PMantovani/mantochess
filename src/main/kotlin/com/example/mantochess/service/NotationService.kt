@@ -141,7 +141,7 @@ class NotationService {
         }
     }
 
-    private fun convertFileInternal(file: String?, allowNull: Boolean): Int? {
+    fun convertFileInternal(file: String?, allowNull: Boolean): Int? {
         return when(file) {
             "a" -> 0
             "b" -> 1
@@ -169,7 +169,7 @@ class NotationService {
         }
     }
 
-    private fun convertRankInternal(rank: String?, allowNull: Boolean): Int? {
+    fun convertRankInternal(rank: String?, allowNull: Boolean): Int? {
         return when(rank) {
             "1" -> 0
             "2" -> 1
