@@ -156,7 +156,7 @@ class NotationService {
         }
     }
 
-    private fun convertFileExternal(file: Int): String {
+    fun convertFileExternal(file: Int): String {
         return when(file) {
             0 -> "a"
             1 -> "b"
@@ -184,7 +184,7 @@ class NotationService {
         }
     }
 
-    private fun convertRankExternal(rank: Int): String {
+    fun convertRankExternal(rank: Int): String {
         return when(rank) {
             0 -> "1"
             1 -> "2"

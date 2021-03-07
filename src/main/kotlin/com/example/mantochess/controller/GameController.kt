@@ -31,8 +31,9 @@ class GameController(
 
     @PostMapping("/{id}/suggest")
     fun suggestMovement(
-        @PathVariable("id") gameUuid: String): String {
-        return gameService.suggestGameMovement(gameUuid)
+        @PathVariable("id") gameUuid: String,
+        @RequestParam("max-depth", defaultValue = "3") maxDepth: Int): String {
+        return gameService.suggestGameMovement(gameUuid, false, maxDepth)
     }
 
     @PostMapping("/{id}/suggest-and-play")

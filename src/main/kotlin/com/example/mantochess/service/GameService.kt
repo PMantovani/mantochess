@@ -10,7 +10,7 @@ class GameService(
     private val notationService: NotationService,
     private val cacheService: CacheService) {
 
-    private val maxDepth = 4
+    private var maxDepth = 3
     private val enableAlphaBetaPruning = false
 
     fun processGameMovement(gameUuid: String, notation: String): Game {
@@ -20,17 +20,25 @@ class GameService(
         return playMovement(game, gameUuid, movement)
     }
 
-    fun suggestGameMovement(gameUuid: String, shouldPlayMovement: Boolean = false): String {
+    fun suggestGameMovement(gameUuid: String, shouldPlayMovement: Boolean = false, depth: Int = maxDepth): String {
+        maxDepth = depth
         val game = getGameFromUuid(gameUuid)
 
-        val countMap = HashMap<Int, Int>()
+        val countMap = HashMap<String, Int>()
 
         val suggestedMovement: Pair<Int, Movement?>
         val ellapsedTime = measureTimeMillis {
-            suggestedMovement = suggestGameMovementAtDepth(game, 0, Int.MIN_VALUE, Int.MAX_VALUE, countMap)
+            suggestedMovement = suggestGameMovementAtDepth(game, 0, Int.MIN_VALUE, Int.MAX_VALUE, countMap, "")
         }
         println("Ellapsed time: ${ellapsedTime}ms")
-        println("Depth movements $countMap")
+        println("Perft:")
+        var total = 0
+        countMap.forEach { (movement, count) ->
+            println("${movement}: $count")
+            total += count
+        }
+        println("Depth: $maxDepth")
+        println("Total nodes: $total")
         println("Game advantage: ${suggestedMovement.first}")
         println("Suggested move: ${suggestedMovement.second}")
         return if (suggestedMovement.second == null) {
@@ -43,12 +51,13 @@ class GameService(
         }
     }
 
-    private fun suggestGameMovementAtDepth(game: Game, currentDepth: Int, alphaParam: Int, betaParam: Int, countMap: MutableMap<Int, Int>
+    private fun suggestGameMovementAtDepth(game: Game, currentDepth: Int, alphaParam: Int, betaParam: Int, countMap: MutableMap<String, Int>, moveStr: String
         ): Pair<Int, Movement?> {
         var alpha = alphaParam
         var beta = betaParam
 
         if (currentDepth == maxDepth) {
+            countMap[moveStr] = (countMap[moveStr]?: 0) + 1
             return Pair(game.getCurrentAdvantage(), null)
         }
 
@@ -76,11 +85,15 @@ class GameService(
 
             for (movement in movements) {
                 val cloneGame = Game(game)
+
+                val moveStr2 = if (currentDepth == 0) {
+                    notationService.convertFileExternal(movement.from.file) +  notationService.convertRankExternal(movement.from.rank) +
+                            notationService.convertFileExternal(movement.to.file) + notationService.convertRankExternal(movement.to.rank)
+                } else moveStr
+
                 cloneGame.makeMovement(movement)
 
-                countMap[currentDepth] = (countMap[currentDepth]?: 0) + 1
-
-                val suggestedMoveToOpponent = suggestGameMovementAtDepth(cloneGame, currentDepth + 1, alpha, beta, countMap)
+                val suggestedMoveToOpponent = suggestGameMovementAtDepth(cloneGame, currentDepth + 1, alpha, beta, countMap, moveStr2)
 
                 value = if (value.first > suggestedMoveToOpponent.first) value else Pair(suggestedMoveToOpponent.first, movement)
                 alpha = Math.max(alpha, value.first)
@@ -95,11 +108,15 @@ class GameService(
 
             for (movement in movements) {
                 val cloneGame = Game(game)
+
+                val moveStr2 = if (currentDepth == 0) {
+                    notationService.convertFileExternal(movement.from.file) +  notationService.convertRankExternal(movement.from.rank) +
+                            notationService.convertFileExternal(movement.to.file) + notationService.convertRankExternal(movement.to.rank)
+                } else moveStr
+
                 cloneGame.makeMovement(movement)
 
-                countMap[currentDepth] = (countMap[currentDepth]?: 0) + 1
-
-                val suggestedMoveToOpponent = suggestGameMovementAtDepth(cloneGame, currentDepth + 1, alpha, beta, countMap)
+                val suggestedMoveToOpponent = suggestGameMovementAtDepth(cloneGame, currentDepth + 1, alpha, beta, countMap, moveStr2)
 
                 value = if (value.first < suggestedMoveToOpponent.first) value else Pair(suggestedMoveToOpponent.first, movement)
                 beta = Math.min(beta, value.first)

@@ -28,15 +28,16 @@ class Game: Serializable {
 
     fun makeMovement(movement: Movement) {
         val piece = board.pieceAt(movement.from.rank, movement.from.file).get()
+        val opponentColor = if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE
 
         val pieceCaptured = board.pieceAt(movement.to.rank, movement.to.file)
         if (pieceCaptured.isPresent) {
             board.pieces[pieceCaptured.get().color]!!.remove(pieceCaptured.get())
             if (pieceCaptured.get().type == PieceType.ROOK && pieceCaptured.get().file == 0) {
                 // After capturing rook, disable opponent's castling ability
-                castlingQueensideAllowed[if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE] = false
+                castlingQueensideAllowed[opponentColor] = false
             } else if (pieceCaptured.get().type == PieceType.ROOK && pieceCaptured.get().file == 7) {
-                castlingKingsideAllowed[if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE] = false
+                castlingKingsideAllowed[opponentColor] = false
             }
         }
 
@@ -58,11 +59,12 @@ class Game: Serializable {
         }
 
         // Process en passant movement
-        if (movement.piece == PieceType.PAWN && movement.to == enPassantTarget) {
-            val enPassantPawnPosition = Position(
+        var lastEnPassantPawnPosition: Position? = null
+        if (movement.piece == PieceType.PAWN && movement.to == lastEnPassantTarget) {
+            lastEnPassantPawnPosition = Position(
                 if (piece.color == Color.WHITE) movement.to.rank - 1 else movement.to.rank + 1,
                 movement.to.file)
-            val enPassantPieceCaptured = board.pieceAt(enPassantPawnPosition.rank, enPassantPawnPosition.file)
+            val enPassantPieceCaptured = board.pieceAt(lastEnPassantPawnPosition.rank, lastEnPassantPawnPosition.file)
             board.pieces[enPassantPieceCaptured.get().color]!!.remove(enPassantPieceCaptured.get())
         }
 
@@ -107,15 +109,21 @@ class Game: Serializable {
         }
         if (lastEnPassantTarget != null) {
             piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(lastEnPassantTarget))
+            if (lastEnPassantPawnPosition != null) {
+                piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(lastEnPassantPawnPosition))
+            }
         }
         if (castlingKingsideAllowed[currentTurnColor]!! || castlingQueensideAllowed[currentTurnColor]!!) {
             // If castling is still available, reprocess kings movement every time
             val king = board.pieces[currentTurnColor]!!.find { p -> p.type == PieceType.KING }!!
             piecesToBeReprocessed.add(king)
         }
-        if (pieceCaptured.isPresent && pieceCaptured.get().type == PieceType.ROOK) {
+
+        if ((pieceCaptured.isPresent && pieceCaptured.get().type == PieceType.ROOK)
+            || castlingKingsideAllowed[opponentColor]!! || castlingQueensideAllowed[opponentColor]!!) {
             // If a rook is captured, we need to re-evaluate opponent king's movements, since castling is now disabled
-            val king = board.pieces[if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE]!!.find { p -> p.type == PieceType.KING }!!
+            // Also, if castling is still enabled for opponent, check movement since king might be in check now
+            val king = board.pieces[opponentColor]!!.find { p -> p.type == PieceType.KING }!!
             piecesToBeReprocessed.add(king)
         }
         if (piece.type == PieceType.ROOK) {

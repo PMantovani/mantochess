@@ -221,16 +221,11 @@ class Piece: Serializable {
 
     private fun kingsideCastlingMovement(game: Game): List<Movement> {
         if (game.castlingKingsideAllowed[color]!!) {
-            val mustBeEmptySquares = when(color) {
-                Color.WHITE -> listOf(Position(0, 5), Position(0, 6))
-                else -> listOf(Position(7, 5), Position(7, 6))
-            }
+            val mustBeEmptySquares = listOf(Position(rank, 5), Position(rank, 6))
+            val mustBeNonAttackedSquares = listOf(Position(rank, 4), Position(rank, 5), Position(rank, 6))
 
-            if (otherPiecesAllowCastle(mustBeEmptySquares, game)) {
-                val kingMovesTo = when(color) {
-                    Color.WHITE -> Position(0, 6)
-                    else -> Position(7, 6)
-                }
+            if (otherPiecesAllowCastle(mustBeEmptySquares, mustBeNonAttackedSquares, game)) {
+                val kingMovesTo = Position(rank, 6)
                 return listOf(Movement(type, Position(rank, file), kingMovesTo, null, false, "O-O") )
             }
         }
@@ -239,23 +234,18 @@ class Piece: Serializable {
 
     private fun queensideCastlingMovement(game: Game): List<Movement> {
         if (game.castlingQueensideAllowed[color]!!) {
-            val mustBeEmptySquares = when(color) {
-                Color.WHITE -> listOf(Position(0, 1), Position(0, 2), Position(0, 3))
-                else -> listOf(Position(7, 1), Position(7, 2), Position(7, 3))
-            }
+            val mustBeEmptySquares = listOf(Position(rank, 1), Position(rank, 2), Position(rank, 3))
+            val mustBeNonAttackedSquares = listOf(Position(rank, 2), Position(rank, 3), Position(rank, 4))
 
-            if (otherPiecesAllowCastle(mustBeEmptySquares, game)) {
-                val kingMovesTo = when(color) {
-                    Color.WHITE -> Position(0, 2)
-                    else -> Position(7, 2)
-                }
+            if (otherPiecesAllowCastle(mustBeEmptySquares, mustBeNonAttackedSquares, game)) {
+                val kingMovesTo = Position(rank, 2)
                 return listOf(Movement(type, Position(rank, file), kingMovesTo, null, false, "O-O-O") )
             }
         }
         return emptyList()
     }
 
-    private fun otherPiecesAllowCastle(mustBeEmptySquares: List<Position>, game: Game): Boolean {
+    private fun otherPiecesAllowCastle(mustBeEmptySquares: List<Position>, mustBeNonAttackedSquares: List<Position>, game: Game): Boolean {
         val intercept = mustBeEmptySquares.find { square -> game.board.pieceAt(square.rank, square.file).isPresent }
         if (intercept == null) {
             val opponentPieces = when(color) {
@@ -263,7 +253,7 @@ class Piece: Serializable {
                 else -> game.board.pieces[Color.WHITE]!!
             }
 
-            val attackingPiece = mustBeEmptySquares.find { square ->
+            val attackingPiece = mustBeNonAttackedSquares.find { square ->
                 opponentPieces.find { piece -> piece.isAttackingSquare(square) } != null
             }
 
