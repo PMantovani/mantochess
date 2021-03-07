@@ -1,9 +1,6 @@
 package com.example.mantochess.service
 
-import com.example.mantochess.model.Color
-import com.example.mantochess.model.Movement
-import com.example.mantochess.model.Game
-import com.example.mantochess.model.PieceType
+import com.example.mantochess.model.*
 import org.springframework.stereotype.Service
 import java.security.InvalidParameterException
 import kotlin.system.measureTimeMillis
@@ -14,7 +11,7 @@ class GameService(
     private val cacheService: CacheService) {
 
     private val maxDepth = 4
-    private val enableAlphaBetaPruning = true
+    private val enableAlphaBetaPruning = false
 
     fun processGameMovement(gameUuid: String, notation: String): Game {
         val game = getGameFromUuid(gameUuid)

@@ -32,8 +32,11 @@ class Game: Serializable {
         val pieceCaptured = board.pieceAt(movement.to.rank, movement.to.file)
         if (pieceCaptured.isPresent) {
             board.pieces[pieceCaptured.get().color]!!.remove(pieceCaptured.get())
-            if (pieceCaptured.get().type == PieceType.KING) {
-                println("capturing king")
+            if (pieceCaptured.get().type == PieceType.ROOK && pieceCaptured.get().file == 0) {
+                // After capturing rook, disable opponent's castling ability
+                castlingQueensideAllowed[if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE] = false
+            } else if (pieceCaptured.get().type == PieceType.ROOK && pieceCaptured.get().file == 7) {
+                castlingKingsideAllowed[if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE] = false
             }
         }
 
@@ -107,6 +110,16 @@ class Game: Serializable {
         }
         if (castlingKingsideAllowed[currentTurnColor]!! || castlingQueensideAllowed[currentTurnColor]!!) {
             // If castling is still available, reprocess kings movement every time
+            val king = board.pieces[currentTurnColor]!!.find { p -> p.type == PieceType.KING }!!
+            piecesToBeReprocessed.add(king)
+        }
+        if (pieceCaptured.isPresent && pieceCaptured.get().type == PieceType.ROOK) {
+            // If a rook is captured, we need to re-evaluate opponent king's movements, since castling is now disabled
+            val king = board.pieces[if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE]!!.find { p -> p.type == PieceType.KING }!!
+            piecesToBeReprocessed.add(king)
+        }
+        if (piece.type == PieceType.ROOK) {
+            // If a rook is moved, we need to re-evaluate our own king's movements, since castling is now disabled
             val king = board.pieces[currentTurnColor]!!.find { p -> p.type == PieceType.KING }!!
             piecesToBeReprocessed.add(king)
         }

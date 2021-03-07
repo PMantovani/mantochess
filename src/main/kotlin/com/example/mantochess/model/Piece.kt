@@ -220,7 +220,7 @@ class Piece: Serializable {
     }
 
     private fun kingsideCastlingMovement(game: Game): List<Movement> {
-        if (game.castlingKingsideAllowed[game.currentTurnColor]!!) {
+        if (game.castlingKingsideAllowed[color]!!) {
             val mustBeEmptySquares = when(color) {
                 Color.WHITE -> listOf(Position(0, 5), Position(0, 6))
                 else -> listOf(Position(7, 5), Position(7, 6))
@@ -238,7 +238,7 @@ class Piece: Serializable {
     }
 
     private fun queensideCastlingMovement(game: Game): List<Movement> {
-        if (game.castlingQueensideAllowed[game.currentTurnColor]!!) {
+        if (game.castlingQueensideAllowed[color]!!) {
             val mustBeEmptySquares = when(color) {
                 Color.WHITE -> listOf(Position(0, 1), Position(0, 2), Position(0, 3))
                 else -> listOf(Position(7, 1), Position(7, 2), Position(7, 3))
