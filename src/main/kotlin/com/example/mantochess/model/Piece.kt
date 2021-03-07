@@ -3,118 +3,127 @@ package com.example.mantochess.model
 import java.io.Serializable
 import kotlin.math.abs
 
-class Piece constructor(var type: PieceType, val color: Color, var rank: Int, var file: Int): Serializable {
+class Piece: Serializable {
 
-    constructor(copyFromPiece: Piece) : this(copyFromPiece.type, copyFromPiece.color, copyFromPiece.rank, copyFromPiece.file) {}
+    var type: PieceType
+    val color: Color
+    var rank: Int
+    var file: Int
+    var pseudoLegalMovements: List<Movement> = mutableListOf()
+
+    constructor(type: PieceType, color: Color, rank: Int, file: Int) {
+        this.type = type
+        this.color = color
+        this.rank = rank
+        this.file = file
+    }
+
+    constructor(copyFromPiece: Piece) : this(copyFromPiece.type, copyFromPiece.color, copyFromPiece.rank, copyFromPiece.file) {
+        pseudoLegalMovements = copyFromPiece.pseudoLegalMovements
+            .map { m -> Movement(m.piece, Position(m.from.rank, m.from.file), Position(m.to.rank, m.to.file),
+                m.promotionPiece, m.isMovementBlocked, m.notation) }
+    }
 
     private enum class MovementDirection { HORIZONTAL, VERTICAL, DIAGONAL, INVERSE_DIAGONAL }
 
-    fun availableMovements(game: Game, excludeMovementsThatCauseOwnCheck: Boolean = true, includeCastling: Boolean = true): List<CompleteMovementInfo> {
-        val movementsBeforeCheckVerification: List<Position> = when(type) {
-            PieceType.PAWN -> pawnMovements(game.board)
+    fun legalMovements(game: Game): List<Movement> {
+        return pseudoLegalMovements.filter { movement -> !movement.isMovementBlocked && !movementCauseOwnCheck(game, movement) }
+    }
+
+    fun reprocessAvailableMovements(game: Game, includeCastling: Boolean = true) {
+        pseudoLegalMovements = when(type) {
+            PieceType.PAWN -> pawnMovements(game, game.board)
             PieceType.ROOK -> rookMovements(game.board)
             PieceType.KNIGHT -> knightMovements(game.board)
             PieceType.BISHOP -> bishopMovements(game.board)
             PieceType.QUEEN -> queenMovements(game.board)
             PieceType.KING -> kingMovements(game, includeCastling)
         }
-
-        val finalMovements: MutableList<Position> = mutableListOf()
-
-        // Check if movement wouldn't cause a check on their own pieces. This movement would be illegal, as it is a pinned piece.
-        // However, there are some cases that are not concerned whether piece is pinned or not, so we introduce the excludeMovementsThatCauseOwnCheck parameter.
-        movementsBeforeCheckVerification.forEach { movement ->
-            if ( !excludeMovementsThatCauseOwnCheck || !movementCauseOwnCheck(game, movement)) {
-                // If move does not result in own-check, this movement is allowed
-                finalMovements.add(movement)
-            }
-        }
-
-        val completeMovements = mutableListOf<CompleteMovementInfo>()
-
-        finalMovements.forEach { movement ->
-            if (isPawnToBePromoted(movement)) {
-                completeMovements.add(CompleteMovementInfo(this.type, Position(rank, file), Position(movement.rank, movement.file), null, PieceType.KNIGHT, ""))
-                completeMovements.add(CompleteMovementInfo(this.type, Position(rank, file), Position(movement.rank, movement.file), null, PieceType.BISHOP, ""))
-                completeMovements.add(CompleteMovementInfo(this.type, Position(rank, file), Position(movement.rank, movement.file), null, PieceType.QUEEN, ""))
-                completeMovements.add(CompleteMovementInfo(this.type, Position(rank, file), Position(movement.rank, movement.file), null, PieceType.ROOK, ""))
-            } else {
-                completeMovements.add(CompleteMovementInfo(this.type, Position(rank, file), Position(movement.rank, movement.file), null, null, ""))
-            }
-        }
-
-        return completeMovements
     }
 
-    private fun movementCauseOwnCheck(game: Game, movement: Position): Boolean {
+    private fun movementCauseOwnCheck(game: Game, movement: Movement): Boolean {
         // Copy game to check move to avoid mutability
         val cloneGame = Game(game)
 
-        val currentPieceAtTargetSquare = cloneGame.board.pieceAt(movement.rank, movement.file)
+        val currentPieceAtTargetSquare = cloneGame.board.pieceAt(movement.to.rank, movement.to.file)
         if (currentPieceAtTargetSquare.isPresent) {
             cloneGame.board.pieces[currentPieceAtTargetSquare.get().color]!!.remove(currentPieceAtTargetSquare.get())
         }
 
         val clonePiece = cloneGame.board.pieceAt(rank, file).get()
 
-        clonePiece.rank = movement.rank
-        clonePiece.file = movement.file
+        clonePiece.rank = movement.to.rank
+        clonePiece.file = movement.to.file
 
         return cloneGame.isColorAtCheck(cloneGame.currentTurnColor)
     }
 
-    private fun isAttackingSquare(game: Game, square: Position): Boolean {
-        return availableMovements(game, excludeMovementsThatCauseOwnCheck = false, includeCastling = false).find { mov -> mov.to == square } != null
+    private fun isAttackingSquare(square: Position): Boolean {
+        return pseudoLegalMovements.find { movement -> movement.to == square } != null
     }
 
-    private fun pawnMovements(board: Board): List<Position> {
+    private fun pawnMovements(game: Game, board: Board): List<Movement> {
         val direction = when(color) {
             Color.WHITE -> 1
             else -> -1
         }
 
-        val movements = mutableListOf<Position>()
+        val movements = mutableListOf<Movement>()
 
-        // Basic movement
-        if (board.pieceAt(rank + direction, file).isEmpty
-            && (rank + direction) in Board.MINIMUM_INDEX..Board.MAXIMUM_INDEX) {
+        // Basic forward movement
+        if ((rank + direction) in Board.MINIMUM_INDEX..Board.MAXIMUM_INDEX) {
+            val isMovementBlocked = board.pieceAt(rank + direction, file).isPresent
 
-            movements.add(Position(rank + direction, file))
+            val target = Position(rank + direction, file)
+            movements.addAll(getPawnMovementPromotion(target, isMovementBlocked))
         }
 
         // Double movement
-        if (((color == Color.WHITE && rank == 1) || (color == Color.BLACK && rank == 6))
-            && board.pieceAt(rank + direction, file).isEmpty
-            && board.pieceAt(rank + (2 * direction), file).isEmpty) {
+        if (((color == Color.WHITE && rank == 1) || (color == Color.BLACK && rank == 6))) {
+            val isMovementBlocked = board.pieceAt(rank + direction, file).isPresent || board.pieceAt(rank + (2 * direction), file).isPresent
 
-            movements.add(Position(rank + (2 * direction), file))
+            movements.add(Movement(type, Position(rank, file), Position(rank + (2 * direction), file), null, isMovementBlocked, ""))
         }
 
         // Capturing diagonals
         var diagonalPiece = board.pieceAt(rank + direction, file + 1)
-        if (diagonalPiece.isPresent && diagonalPiece.get().color != color) {
-            movements.add(Position(rank + direction, file + 1))
-        }
+        var isMovementBlocked = diagonalPiece.isEmpty || diagonalPiece.get().color == color
+        var target = Position(rank + direction, file + 1)
+        movements.addAll(getPawnMovementPromotion(target, isMovementBlocked))
+
 
         diagonalPiece = board.pieceAt(rank + direction, file - 1)
-        if (diagonalPiece.isPresent && diagonalPiece.get().color != color) {
-            movements.add(Position(rank + direction, file - 1))
-        }
+        isMovementBlocked = diagonalPiece.isEmpty || diagonalPiece.get().color == color
+        target = Position(rank + direction, file - 1)
+        movements.addAll(getPawnMovementPromotion(target, isMovementBlocked))
 
         // TODO: Add en-passant movement
 
         return movements
     }
 
-    private fun rookMovements(board: Board): List<Position> {
-        val movements = mutableListOf<Position>()
+    private fun getPawnMovementPromotion(target: Position, isMovementBlocked: Boolean): List<Movement> {
+        return if (target.rank == Board.MAXIMUM_INDEX || target.rank == Board.MINIMUM_INDEX) {
+            listOf(
+                Movement(type, Position(rank, file), target, PieceType.QUEEN, isMovementBlocked, ""),
+                Movement(type, Position(rank, file), target, PieceType.KNIGHT, isMovementBlocked, ""),
+                Movement(type, Position(rank, file), target, PieceType.ROOK, isMovementBlocked, ""),
+                Movement(type, Position(rank, file), target, PieceType.BISHOP, isMovementBlocked, "")
+            )
+        } else {
+            listOf(Movement(type, Position(rank, file), target, null, isMovementBlocked, ""))
+        }
+    }
+
+    private fun rookMovements(board: Board): List<Movement> {
+        val movements = mutableListOf<Movement>()
         movements.addAll(verticalMovement(board))
         movements.addAll(horizontalMovement(board))
         return movements
     }
 
-    private fun knightMovements(board: Board): List<Position> {
-        val movements = mutableListOf<Position>()
+    private fun knightMovements(board: Board): List<Movement> {
+        val movements = mutableListOf<Movement>()
         movements.addAll(moveToPosition(board, rank + 2, file + 1))
         movements.addAll(moveToPosition(board, rank + 2, file - 1))
         movements.addAll(moveToPosition(board, rank - 2, file + 1))
@@ -127,30 +136,29 @@ class Piece constructor(var type: PieceType, val color: Color, var rank: Int, va
         return movements
     }
 
-    private fun moveToPosition(board: Board, rank: Int, file: Int): List<Position> {
-        val pieceAtNextPosition = board.pieceAt(rank, file)
-        if ((pieceAtNextPosition.isEmpty || pieceAtNextPosition.get().color != this.color)
-            && rank in Board.MINIMUM_INDEX..Board.MAXIMUM_INDEX
-            && file in Board.MINIMUM_INDEX..Board.MAXIMUM_INDEX) {
-            return listOf(Position(rank, file))
+    private fun moveToPosition(board: Board, targetRank: Int, targetFile: Int): List<Movement> {
+        val pieceAtNextPosition = board.pieceAt(targetRank, targetFile)
+        if (targetRank in Board.MINIMUM_INDEX..Board.MAXIMUM_INDEX && targetFile in Board.MINIMUM_INDEX..Board.MAXIMUM_INDEX) {
+            val isMovementBlocked = pieceAtNextPosition.isPresent && pieceAtNextPosition.get().color == this.color
+            return listOf(Movement(type, Position(this.rank, this.file), Position(targetRank, targetFile), null, isMovementBlocked, ""))
         }
         return emptyList()
     }
 
-    private fun bishopMovements(board: Board): List<Position> {
+    private fun bishopMovements(board: Board): List<Movement> {
         return diagonalMovements(board)
     }
 
-    private fun queenMovements(board: Board): List<Position> {
-        val movements = mutableListOf<Position>()
+    private fun queenMovements(board: Board): List<Movement> {
+        val movements = mutableListOf<Movement>()
         movements.addAll(verticalMovement(board))
         movements.addAll(horizontalMovement(board))
         movements.addAll(diagonalMovements(board))
         return movements
     }
 
-    private fun kingMovements(game: Game, includeCastling: Boolean): List<Position> {
-        val movements = mutableListOf<Position>()
+    private fun kingMovements(game: Game, includeCastling: Boolean): List<Movement> {
+        val movements = mutableListOf<Movement>()
         movements.addAll(iterativeMovements(game.board, -1, 0, MovementDirection.VERTICAL))
         movements.addAll(iterativeMovements(game.board, 0, 1, MovementDirection.VERTICAL))
         movements.addAll(iterativeMovements(game.board, -1, 0, MovementDirection.HORIZONTAL))
@@ -169,22 +177,22 @@ class Piece constructor(var type: PieceType, val color: Color, var rank: Int, va
         return movements
     }
 
-    private fun verticalMovement(board: Board): List<Position> {
-        val movements = mutableListOf<Position>()
+    private fun verticalMovement(board: Board): List<Movement> {
+        val movements = mutableListOf<Movement>()
         movements.addAll(iterativeMovements(board, -Board.MAXIMUM_INDEX, -1, MovementDirection.VERTICAL))
         movements.addAll(iterativeMovements(board, 1, Board.MAXIMUM_INDEX, MovementDirection.VERTICAL))
         return movements
     }
 
-    private fun horizontalMovement(board: Board): List<Position> {
-        val movements = mutableListOf<Position>()
+    private fun horizontalMovement(board: Board): List<Movement> {
+        val movements = mutableListOf<Movement>()
         movements.addAll(iterativeMovements(board, -Board.MAXIMUM_INDEX, -1, MovementDirection.HORIZONTAL))
         movements.addAll(iterativeMovements(board, 1, Board.MAXIMUM_INDEX, MovementDirection.HORIZONTAL))
         return movements
     }
 
-    private fun diagonalMovements(board: Board): List<Position> {
-        val movements = mutableListOf<Position>()
+    private fun diagonalMovements(board: Board): List<Movement> {
+        val movements = mutableListOf<Movement>()
         movements.addAll(iterativeMovements(board, -Board.MAXIMUM_INDEX, -1, MovementDirection.DIAGONAL))
         movements.addAll(iterativeMovements(board, 1, Board.MAXIMUM_INDEX, MovementDirection.DIAGONAL))
         movements.addAll(iterativeMovements(board, -Board.MAXIMUM_INDEX, -1, MovementDirection.INVERSE_DIAGONAL))
@@ -192,8 +200,8 @@ class Piece constructor(var type: PieceType, val color: Color, var rank: Int, va
         return movements
     }
 
-    private fun iterativeMovements(board: Board, from: Int, to: Int, movementType: MovementDirection): List<Position> {
-        val movements = mutableListOf<Position>()
+    private fun iterativeMovements(board: Board, from: Int, to: Int, movementType: MovementDirection): List<Movement> {
+        val movements = mutableListOf<Movement>()
 
         // We have to use downTo for ranges when from is larger than to because we stop in the first interception
         val squareRangeProgression = if (abs(from) < abs(to)) from..to else to downTo from
@@ -211,23 +219,22 @@ class Piece constructor(var type: PieceType, val color: Color, var rank: Int, va
             if (nextCoordinates.rank < Board.MINIMUM_INDEX || nextCoordinates.rank > Board.MAXIMUM_INDEX
                 || nextCoordinates.file < Board.MINIMUM_INDEX || nextCoordinates.file > Board.MAXIMUM_INDEX
                 || (nextCoordinates.rank == rank && nextCoordinates.file == file)) {
-                continue
+                break
             }
 
             val pieceAtNextSquare = board.pieceAt(nextCoordinates.rank, nextCoordinates.file)
             if (pieceAtNextSquare.isEmpty) {
-                movements.add(nextCoordinates)
+                movements.add(Movement(type, Position(rank, file), nextCoordinates, null, false, "" ))
             } else {
-                if (pieceAtNextSquare.get().color != color) {
-                    movements.add(nextCoordinates)
-                }
+                val isMovementBlocked = pieceAtNextSquare.get().color == color
+                movements.add(Movement(type, Position(rank, file), nextCoordinates, null, isMovementBlocked, "" ))
                 break
             }
         }
         return movements
     }
 
-    private fun kingsideCastlingMovement(game: Game): List<Position> {
+    private fun kingsideCastlingMovement(game: Game): List<Movement> {
         if (game.castlingKingsideAllowed[game.currentTurnColor]!!) {
             val mustBeEmptySquares = when(color) {
                 Color.WHITE -> listOf(Position(0, 5), Position(0, 6))
@@ -239,13 +246,13 @@ class Piece constructor(var type: PieceType, val color: Color, var rank: Int, va
                     Color.WHITE -> Position(0, 6)
                     else -> Position(7, 6)
                 }
-                return listOf(kingMovesTo)
+                return listOf(Movement(type, Position(rank, file), kingMovesTo, null, false, "O-O") )
             }
         }
         return emptyList()
     }
 
-    private fun queensideCastlingMovement(game: Game): List<Position> {
+    private fun queensideCastlingMovement(game: Game): List<Movement> {
         if (game.castlingQueensideAllowed[game.currentTurnColor]!!) {
             val mustBeEmptySquares = when(color) {
                 Color.WHITE -> listOf(Position(0, 1), Position(0, 2), Position(0, 3))
@@ -257,7 +264,7 @@ class Piece constructor(var type: PieceType, val color: Color, var rank: Int, va
                     Color.WHITE -> Position(0, 2)
                     else -> Position(7, 2)
                 }
-                return listOf(kingMovesTo)
+                return listOf(Movement(type, Position(rank, file), kingMovesTo, null, false, "O-O-O") )
             }
         }
         return emptyList()
@@ -272,7 +279,7 @@ class Piece constructor(var type: PieceType, val color: Color, var rank: Int, va
             }
 
             val attackingPiece = mustBeEmptySquares.find { square ->
-                opponentPieces.find { piece -> piece.isAttackingSquare(game, square) } != null
+                opponentPieces.find { piece -> piece.isAttackingSquare(square) } != null
             }
 
             return attackingPiece == null

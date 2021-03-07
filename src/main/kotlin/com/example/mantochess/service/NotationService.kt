@@ -10,7 +10,7 @@ class NotationService {
     val notationRegex: Pattern = Pattern.compile(
         "(?:(?<piece>[A-z])?(?<originFile>[A-z])?(?<originRank>[0-9])?x?(?<targetFile>[A-z])(?<targetRank>[0-9])(?<promotionPiece>[A-z])?)|(?<castling>(?:O-O(?:-O)?)|(?:0-0(?:-0)?))")
 
-    fun convertNotationToMovement(notation: String, game: Game): CompleteMovementInfo {
+    fun convertNotationToMovement(notation: String, game: Game): Movement {
         val notationMatcher = notationRegex.matcher(notation)
 
         if (notationMatcher.find()) {
@@ -22,7 +22,7 @@ class NotationService {
             val targetRank = convertRankInternal(notationMatcher.group("targetRank"), castling != null)
             val promotionPiece = getPromotionPieceType(notationMatcher.group("promotionPiece"))
 
-            val movements = game.availableMovementFor(game.currentTurnColor)
+            val movements = game.availableMovementsFor(game.currentTurnColor)
 
             if (castling == "O-O-O" || castling == "0-0-0") {
                 return castling(game, movements, false)
@@ -41,12 +41,12 @@ class NotationService {
 
                 val movement = matchingMovements[0]
 
-                return CompleteMovementInfo(
+                return Movement(
                     movement.piece,
                     movement.from,
                     movement.to,
-                    null,
                     promotionPiece,
+                    false,
                     notation)
             }
         } else {
@@ -54,7 +54,7 @@ class NotationService {
         }
     }
 
-    fun convertMovementToNotation(movement: CompleteMovementInfo): String {
+    fun convertMovementToNotation(movement: Movement): String {
         val piece = convertPieceTypeExternal(movement.piece)
         val targetFile = convertFileExternal(movement.to.file)
         val targetRank = convertRankExternal(movement.to.rank)
@@ -64,7 +64,7 @@ class NotationService {
     }
 
     private fun findMatchingMovements(
-        allMovements: List<CompleteMovementInfo>, pieceType: PieceType, targetPosition: Position, originRank: Int?, originFile: Int?): List<CompleteMovementInfo> {
+        allMovements: List<Movement>, pieceType: PieceType, targetPosition: Position, originRank: Int?, originFile: Int?): List<Movement> {
 
         return allMovements.filter { m ->
             m.piece == pieceType &&
@@ -74,7 +74,7 @@ class NotationService {
             (m.from.file == originFile || originFile == null) }
     }
 
-    private fun castling(game: Game, availableMovements: List<CompleteMovementInfo>, kingsSide: Boolean): CompleteMovementInfo {
+    private fun castling(game: Game, availableMovements: List<Movement>, kingsSide: Boolean): Movement {
         val finalKingPosition =
             if (kingsSide)
                 when(game.currentTurnColor) {
@@ -96,12 +96,12 @@ class NotationService {
             throw InvalidMovementException("Castling not allowed")
         }
 
-        return CompleteMovementInfo(
+        return Movement(
             PieceType.KING,
             castlingMovement.from,
             finalKingPosition,
-            if (kingsSide) "King's side castling" else "Queen's side castling",
             null,
+            false,
             if (kingsSide) "O-O" else "O-O-O",
         )
     }

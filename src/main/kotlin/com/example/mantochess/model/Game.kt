@@ -7,11 +7,13 @@ class Game: Serializable {
     var currentTurnColor = Color.WHITE
     val castlingKingsideAllowed: MutableMap<Color, Boolean>
     val castlingQueensideAllowed: MutableMap<Color, Boolean>
+    var enPassantTarget: Position? = null
 
     constructor() {
         board = Board()
         castlingKingsideAllowed = mutableMapOf(Pair(Color.WHITE, true), Pair(Color.BLACK, true))
         castlingQueensideAllowed = mutableMapOf(Pair(Color.WHITE, true), Pair(Color.BLACK, true))
+        board.pieces.forEach { (_, pieces) -> pieces.forEach { piece -> piece.reprocessAvailableMovements(this) } }
     }
 
     constructor(copyFromGame: Game) {
@@ -19,9 +21,11 @@ class Game: Serializable {
         currentTurnColor = copyFromGame.currentTurnColor
         castlingKingsideAllowed = copyFromGame.castlingKingsideAllowed.toMutableMap()
         castlingQueensideAllowed = copyFromGame.castlingQueensideAllowed.toMutableMap()
+        enPassantTarget = if (copyFromGame.enPassantTarget != null)
+            Position(copyFromGame.enPassantTarget!!.rank, copyFromGame.enPassantTarget!!.file) else null
     }
 
-    fun makeMovement(movement: CompleteMovementInfo) {
+    fun makeMovement(movement: Movement) {
         val piece = board.pieceAt(movement.from.rank, movement.from.file).get()
 
         val pieceCaptured = board.pieceAt(movement.to.rank, movement.to.file)
@@ -35,15 +39,21 @@ class Game: Serializable {
         piece.file = movement.to.file
 
         // Process castling
+        var castlingRook: Piece? = null
+        val rookSquaresInCastling = mutableListOf<Position>()
         if (movement.notation == "O-O-O") {
             // King was naturally moved by previous statements on castling. Now we need to move the rook.
             val rank = if (currentTurnColor == Color.WHITE) Board.MINIMUM_INDEX else Board.MAXIMUM_INDEX
-            val rook = board.pieceAt(rank, Board.MINIMUM_INDEX).get()
-            rook.file = 3
+            castlingRook = board.pieceAt(rank, Board.MINIMUM_INDEX).get()
+            castlingRook.file = 3
+            rookSquaresInCastling.add(Position(rank, 0))
+            rookSquaresInCastling.add(Position(rank, 3))
         } else if (movement.notation == "O-O") {
             val rank = if (currentTurnColor == Color.WHITE) Board.MINIMUM_INDEX else Board.MAXIMUM_INDEX
-            val rook = board.pieceAt(rank, Board.MAXIMUM_INDEX).get()
-            rook.file = 5
+            castlingRook = board.pieceAt(rank, Board.MAXIMUM_INDEX).get()
+            castlingRook.file = 5
+            rookSquaresInCastling.add(Position(rank, 7))
+            rookSquaresInCastling.add(Position(rank, 5))
         }
 
         // Process pawn promotion
@@ -54,7 +64,37 @@ class Game: Serializable {
             piece.type = movement.promotionPiece
         }
 
+        // For delta movement processing, we need to figure out which pieces need to be reprocessed.
+        // The moved piece for sure needs to be reprocessed, in addition for the castling rook, if it was a castling movement
+        // And also with the addition of any pieces touching the source and target squares.
+        val piecesToBeReprocessed = mutableSetOf(piece)
+        castlingRook?.let {
+            piecesToBeReprocessed.add(castlingRook)
+            rookSquaresInCastling.forEach { rookSquares -> piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(rookSquares)) }
+
+        }
+        piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(movement.from))
+        piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(movement.to))
+        if (castlingKingsideAllowed[currentTurnColor]!! || castlingQueensideAllowed[currentTurnColor]!!) {
+            // If castling is still available, reprocess kings movement every time
+            val king = board.pieces[currentTurnColor]!!.find { p -> p.type == PieceType.KING }!!
+            piecesToBeReprocessed.add(king)
+        }
+
+        // Reprocess movements for pieces
+        piecesToBeReprocessed.forEach { pieceToReprocess -> pieceToReprocess.reprocessAvailableMovements(this) }
+
         currentTurnColor = if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE
+    }
+
+    private fun piecesThatNeedReprocessingAtSquare(position: Position): Set<Piece> {
+        val piecesToBeReprocessed = mutableSetOf<Piece>()
+        board.pieces.forEach { (_, pieces) -> pieces.forEach { piece ->
+            if (piece.pseudoLegalMovements.find { movement -> movement.to == position } != null) {
+                piecesToBeReprocessed.add(piece)
+            }
+        } }
+        return piecesToBeReprocessed
     }
 
     private fun updateCastlingAbility(pieceMoved: Piece) {
@@ -73,17 +113,23 @@ class Game: Serializable {
     }
 
     fun isColorAtCheck(color: Color): Boolean {
-        val king = board.pieces[color]!!.find { p -> p.type == PieceType.KING }!!
+        val king = board.pieces[color]!!.find { p -> p.type == PieceType.KING }
 
-        val opponentMoves = availableMovementFor(if (color == Color.WHITE) Color.BLACK else Color.WHITE, false)
-        val checkMove = opponentMoves.find { move -> move.to.rank == king.rank && move.to.file == king.file }
+        if (king == null) {
+            println("king is null")
+        }
+
+        val opponentMoves = availableMovementsFor(if (color == Color.WHITE) Color.BLACK else Color.WHITE, false)
+        val checkMove = opponentMoves.find { move -> move.to.rank == king!!.rank && move.to.file == king.file }
         return checkMove != null
     }
 
-    fun availableMovementFor(color: Color, excludeMovementsThatCauseOwnCheck: Boolean = true): List<CompleteMovementInfo> {
+    fun availableMovementsFor(color: Color, excludeMovementsThatCauseOwnCheck: Boolean = true): List<Movement> {
         val pieces = board.pieces[color]!!
 
-        return pieces.map { p -> p.availableMovements(this, excludeMovementsThatCauseOwnCheck) }.flatten()
+        return if (excludeMovementsThatCauseOwnCheck)
+            pieces.map { p -> p.legalMovements(this) }.flatten()
+            else pieces.map { p -> p.pseudoLegalMovements }.flatten().filter { m -> !m.isMovementBlocked }
     }
 
     fun getCurrentAdvantage(): Int {

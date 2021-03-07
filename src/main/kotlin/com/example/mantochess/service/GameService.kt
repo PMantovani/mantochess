@@ -1,11 +1,12 @@
 package com.example.mantochess.service
 
 import com.example.mantochess.model.Color
-import com.example.mantochess.model.CompleteMovementInfo
+import com.example.mantochess.model.Movement
 import com.example.mantochess.model.Game
 import com.example.mantochess.model.PieceType
 import org.springframework.stereotype.Service
 import java.security.InvalidParameterException
+import kotlin.system.measureTimeMillis
 
 @Service
 class GameService(
@@ -26,7 +27,11 @@ class GameService(
 
         val countMap = HashMap<Int, Int>()
 
-        val suggestedMovement = suggestGameMovementAtDepth(game, 0, Int.MIN_VALUE, Int.MAX_VALUE, countMap)
+        val suggestedMovement: Pair<Int, Movement?>
+        val ellapsedTime = measureTimeMillis {
+            suggestedMovement = suggestGameMovementAtDepth(game, 0, Int.MIN_VALUE, Int.MAX_VALUE, countMap)
+        }
+        println("Ellapsed time: ${ellapsedTime}ms")
         println("Depth movements $countMap")
         println("Game advantage: ${suggestedMovement.first}")
         println("Suggested move: ${suggestedMovement.second}")
@@ -41,7 +46,7 @@ class GameService(
     }
 
     private fun suggestGameMovementAtDepth(game: Game, currentDepth: Int, alphaParam: Int, betaParam: Int, countMap: MutableMap<Int, Int>
-        ): Pair<Int, CompleteMovementInfo?> {
+        ): Pair<Int, Movement?> {
         var alpha = alphaParam
         var beta = betaParam
 
@@ -49,7 +54,7 @@ class GameService(
             return Pair(game.getCurrentAdvantage(), null)
         }
 
-        val unsortedMovements = game.availableMovementFor(game.currentTurnColor)
+        val unsortedMovements = game.availableMovementsFor(game.currentTurnColor)
 
         // Sorting movement first by pieces that would be captured enhances alpha-beta pruning algorithm,
         // as those movements are more likely to be the best ones, so pruning occurs more often
@@ -69,7 +74,7 @@ class GameService(
         }
 
         if (game.currentTurnColor == Color.WHITE) {
-            var value = Pair<Int, CompleteMovementInfo?>(Int.MIN_VALUE, null)
+            var value = Pair<Int, Movement?>(Int.MIN_VALUE, null)
 
             for (movement in movements) {
                 val cloneGame = Game(game)
@@ -88,7 +93,7 @@ class GameService(
             }
             return value
         } else {
-            var value = Pair<Int, CompleteMovementInfo?>(Int.MAX_VALUE, null)
+            var value = Pair<Int, Movement?>(Int.MAX_VALUE, null)
 
             for (movement in movements) {
                 val cloneGame = Game(game)
@@ -113,7 +118,7 @@ class GameService(
         return cacheService.fetchGame(gameUuid) ?: throw InvalidParameterException("Invalid game uuid")
     }
 
-    private fun playMovement(game: Game, gameUuid: String, movement: CompleteMovementInfo): Game {
+    private fun playMovement(game: Game, gameUuid: String, movement: Movement): Game {
         val gameInNextMove = Game(game)
         gameInNextMove.makeMovement(movement)
 

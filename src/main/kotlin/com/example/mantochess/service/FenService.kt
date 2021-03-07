@@ -46,6 +46,8 @@ class FenService {
 
         this.parseGameMetadata(game, ranks[7])
 
+        game.board.pieces.forEach { _, pieces -> pieces.forEach { piece -> piece.reprocessAvailableMovements(game) } }
+
         println("Parsed FEN board")
         game.board.printBoard()
 
