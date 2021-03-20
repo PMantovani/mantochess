@@ -7,6 +7,11 @@ import java.util.regex.Pattern
 @Service
 class NotationService {
 
+    companion object {
+        const val kingsideCastleNotation = "O-O"
+        const val queensideCastleNotation = "O-O-O"
+    }
+
     val notationRegex: Pattern = Pattern.compile(
         "(?:(?<piece>[A-z])?(?<originFile>[A-z])?(?<originRank>[0-9])?x?(?<targetFile>[A-z])(?<targetRank>[0-9])(?<promotionPiece>[A-z])?)|(?<castling>(?:O-O(?:-O)?)|(?:0-0(?:-0)?))")
 
@@ -29,7 +34,7 @@ class NotationService {
             } else if (castling == "O-O" || castling == "0-0") {
                 return castling(game, movements, true)
             } else {
-                val matchingMovements = findMatchingMovements(movements, pieceType, Position(targetRank!!, targetFile!!), originRank, originFile)
+                val matchingMovements = findMatchingMovements(movements, pieceType, PositionHelper.toLong(targetRank!!, targetFile!!), originRank, originFile)
 
                 if (matchingMovements.size > 1) {
                     throw InvalidMovementException("More than one matching movement for $notation")
@@ -41,10 +46,13 @@ class NotationService {
 
                 val movement = matchingMovements[0]
 
+                val capturedPiece = game.board.pieceAt(movement.to)
+
                 return Movement(
                     movement.piece,
                     movement.from,
                     movement.to,
+                    capturedPiece,
                     promotionPiece,
                     false,
                     notation)
@@ -55,39 +63,38 @@ class NotationService {
     }
 
     fun convertMovementToNotation(movement: Movement): String {
-        val piece = convertPieceTypeExternal(movement.piece)
-        val targetFile = convertFileExternal(movement.to.file)
-        val targetRank = convertRankExternal(movement.to.rank)
-        val promotionPiece = convertPieceTypeExternal(movement.promotionPiece)
+        val piece = convertPieceTypeExternal(movement.piece.type)
+        val target = PositionHelper.toAlgebraicNotation(movement.to, movement.promotionPiece)
 
-        return "$piece$targetFile$targetRank$promotionPiece"
+        return "$piece$target"
     }
 
     private fun findMatchingMovements(
-        allMovements: List<Movement>, pieceType: PieceType, targetPosition: Position, originRank: Int?, originFile: Int?): List<Movement> {
+        allMovements: List<Movement>, pieceType: PieceType, targetPosition: Long, originRank: Int?, originFile: Int?): List<Movement> {
 
         return allMovements.filter { m ->
-            m.piece == pieceType &&
-            m.to.rank == targetPosition.rank &&
-            m.to.file == targetPosition.file &&
-            (m.from.rank == originRank || originRank == null) &&
-            (m.from.file == originFile || originFile == null) }
+            val from = PositionHelper.toPair(m.from)
+
+            m.piece.type == pieceType &&
+            m.to == targetPosition
+            (from.rank == originRank || originRank == null) &&
+            (from.file == originFile || originFile == null) }
     }
 
     private fun castling(game: Game, availableMovements: List<Movement>, kingsSide: Boolean): Movement {
         val finalKingPosition =
             if (kingsSide)
                 when(game.currentTurnColor) {
-                    Color.WHITE -> Position(0, 6)
-                    else -> Position(7, 6)
+                    Color.WHITE -> PositionHelper.toLong(0, 6)
+                    else -> PositionHelper.toLong(7, 6)
                 }
             else when(game.currentTurnColor) {
-                    Color.WHITE -> Position(0, 2)
-                    else -> Position(7, 2)
+                    Color.WHITE -> PositionHelper.toLong(0, 2)
+                    else -> PositionHelper.toLong(7, 2)
                 }
 
         val castlingMovement = availableMovements
-            .filter { m -> m.piece == PieceType.KING }
+            .filter { m -> m.piece.type == PieceType.KING }
             .find { m -> m.to == finalKingPosition }
 
         if (castlingMovement == null
@@ -97,9 +104,10 @@ class NotationService {
         }
 
         return Movement(
-            PieceType.KING,
+            castlingMovement.piece,
             castlingMovement.from,
             finalKingPosition,
+            null,
             null,
             false,
             if (kingsSide) "O-O" else "O-O-O",

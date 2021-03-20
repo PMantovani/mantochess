@@ -1,151 +1,135 @@
 package com.example.mantochess.model
 
+import com.example.mantochess.model.pieces.Piece
+import com.example.mantochess.service.MovementService
+import com.example.mantochess.service.NotationService
+import com.example.mantochess.service.PositionHelper
 import java.io.Serializable
-import kotlin.math.abs
+import java.util.*
 
 class Game: Serializable {
-    val board: Board
+    val board: Board = Board()
     var currentTurnColor = Color.WHITE
-    val castlingKingsideAllowed: MutableMap<Color, Boolean>
-    val castlingQueensideAllowed: MutableMap<Color, Boolean>
-    var enPassantTarget: Position? = null
+    var castlingKingsideAllowed: MutableMap<Color, Boolean>
+    var castlingQueensideAllowed: MutableMap<Color, Boolean>
+    var enPassantTarget: Long? = null
+    private val gameHistory = Stack<GameHistoryData>()
 
-    constructor() {
-        board = Board()
+    init {
         castlingKingsideAllowed = mutableMapOf(Pair(Color.WHITE, true), Pair(Color.BLACK, true))
         castlingQueensideAllowed = mutableMapOf(Pair(Color.WHITE, true), Pair(Color.BLACK, true))
-        board.pieces.forEach { (_, pieces) -> pieces.forEach { piece -> piece.reprocessAvailableMovements(this) } }
-    }
-
-    constructor(copyFromGame: Game) {
-        board = Board(copyFromGame.board)
-        currentTurnColor = copyFromGame.currentTurnColor
-        castlingKingsideAllowed = copyFromGame.castlingKingsideAllowed.toMutableMap()
-        castlingQueensideAllowed = copyFromGame.castlingQueensideAllowed.toMutableMap()
-        enPassantTarget = if (copyFromGame.enPassantTarget != null)
-            Position(copyFromGame.enPassantTarget!!.rank, copyFromGame.enPassantTarget!!.file) else null
     }
 
     fun makeMovement(movement: Movement) {
-        val piece = board.pieceAt(movement.from.rank, movement.from.file).get()
+        gameHistory.push(GameHistoryData(movement, castlingKingsideAllowed.toMutableMap(), castlingQueensideAllowed.toMutableMap(), enPassantTarget))
+
         val opponentColor = if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE
 
-        val pieceCaptured = board.pieceAt(movement.to.rank, movement.to.file)
-        if (pieceCaptured.isPresent) {
-            board.pieces[pieceCaptured.get().color]!!.remove(pieceCaptured.get())
-            if (pieceCaptured.get().type == PieceType.ROOK && pieceCaptured.get().file == 0) {
+        if (movement.capturedPiece != null) {
+            board.pieces.remove(movement.capturedPiece)
+            val queensideRookPosition = if (movement.capturedPiece.color == Color.WHITE) 0x01L else PositionHelper.toLong(7, 0)
+            val kingsideRookPosition = if (movement.capturedPiece.color == Color.WHITE) 0x01L.shl(7) else PositionHelper.toLong(7, 7)
+            if (movement.capturedPiece.type == PieceType.ROOK && movement.to == queensideRookPosition) {
                 // After capturing rook, disable opponent's castling ability
                 castlingQueensideAllowed[opponentColor] = false
-            } else if (pieceCaptured.get().type == PieceType.ROOK && pieceCaptured.get().file == 7) {
+            } else if (movement.capturedPiece.type == PieceType.ROOK && movement.to == kingsideRookPosition) {
                 castlingKingsideAllowed[opponentColor] = false
             }
+            // We need to also remove the captured piece here because it might be en-passant capture, so it wouldn't match
+            // the target position below. So simply overriding the value in the map wouldn't work.
+            board.piecePositions.remove(movement.capturedPiece.position)
         }
 
-        updateCastlingAbility(piece)
+        updateCastlingAbility(movement.piece)
 
-        piece.rank = movement.to.rank
-        piece.file = movement.to.file
+        board.piecePositions.remove(movement.piece.position)
+        movement.piece.position = movement.to
+        board.piecePositions[movement.piece.position] = movement.piece
 
-        // Records last en passant square to process pawns there
-        val lastEnPassantTarget = enPassantTarget
 
         // Enables en passant square if moving pawn two squares
-        enPassantTarget = if (movement.piece == PieceType.PAWN && abs(movement.to.rank - movement.from.rank) == 2) {
-            Position(
-                if (piece.color == Color.WHITE) movement.from.rank + 1 else movement.from.rank - 1,
-                movement.from.file)
+        val hasMovedTwoSquares = { from: Long, to: Long ->
+            from.and(0xFFL.shl(8)) != 0x00L && to.and(0xFFL.shl(8 * 3)) != 0x00L ||
+            from.and(0xFFL.shl(8 * 6)) != 0x00L && to.and(0xFFL.shl(8 * 4)) != 0x00L
+        }
+        enPassantTarget = if (movement.piece.type == PieceType.PAWN && hasMovedTwoSquares(movement.from, movement.to)) {
+            if (currentTurnColor == Color.WHITE) movement.to.shr(8) else movement.to.shl(8)
         } else {
             null
         }
 
-        // Process en passant movement
-        var lastEnPassantPawnPosition: Position? = null
-        if (movement.piece == PieceType.PAWN && movement.to == lastEnPassantTarget) {
-            lastEnPassantPawnPosition = Position(
-                if (piece.color == Color.WHITE) movement.to.rank - 1 else movement.to.rank + 1,
-                movement.to.file)
-            val enPassantPieceCaptured = board.pieceAt(lastEnPassantPawnPosition.rank, lastEnPassantPawnPosition.file)
-            board.pieces[enPassantPieceCaptured.get().color]!!.remove(enPassantPieceCaptured.get())
-        }
-
         // Process castling
-        var castlingRook: Piece? = null
-        val rookSquaresInCastling = mutableListOf<Position>()
         if (movement.notation == "O-O-O") {
             // King was naturally moved by previous statements on castling. Now we need to move the rook.
-            val rank = if (currentTurnColor == Color.WHITE) Board.MINIMUM_INDEX else Board.MAXIMUM_INDEX
-            castlingRook = board.pieceAt(rank, Board.MINIMUM_INDEX).get()
-            castlingRook.file = 3
-            rookSquaresInCastling.add(Position(rank, 0))
-            rookSquaresInCastling.add(Position(rank, 3))
+            val rookPosition = if (currentTurnColor == Color.WHITE) 0x01L else PositionHelper.toLong(7, 0)
+            val castlingRook = board.pieceAt(rookPosition)!!
+            board.piecePositions.remove(castlingRook.position)
+            castlingRook.position = castlingRook.position.shl(3)
+            board.piecePositions[castlingRook.position] = castlingRook
         } else if (movement.notation == "O-O") {
-            val rank = if (currentTurnColor == Color.WHITE) Board.MINIMUM_INDEX else Board.MAXIMUM_INDEX
-            castlingRook = board.pieceAt(rank, Board.MAXIMUM_INDEX).get()
-            castlingRook.file = 5
-            rookSquaresInCastling.add(Position(rank, 7))
-            rookSquaresInCastling.add(Position(rank, 5))
+            val rookPosition = if (currentTurnColor == Color.WHITE) PositionHelper.toLong(0, 7) else PositionHelper.toLong(7, 7)
+            val castlingRook = board.pieceAt(rookPosition)!!
+            board.piecePositions.remove(castlingRook.position)
+            castlingRook.position = castlingRook.position.ushr(2)
+            board.piecePositions[castlingRook.position] = castlingRook
         }
 
         // Process pawn promotion
-        if (piece.isPawnToBePromoted(Position(piece.rank, piece.file))) {
+        if (movement.piece.isPawnToBePromoted(movement.to)) {
             if (movement.promotionPiece == null) {
                 throw InvalidMovementException("Promotion piece must be specified after pawn reaches end of board")
             }
-            piece.type = movement.promotionPiece
+            movement.piece.type = movement.promotionPiece
+            board.piecePositions[movement.piece.position] = movement.piece
         }
-
-        // For delta movement processing, we need to figure out which pieces need to be reprocessed.
-        // The moved piece for sure needs to be reprocessed, in addition for the castling rook, if it was a castling movement
-        // And also with the addition of any pieces touching the source and target squares.
-        val piecesToBeReprocessed = mutableSetOf(piece)
-        castlingRook?.let {
-            piecesToBeReprocessed.add(castlingRook)
-            rookSquaresInCastling.forEach { rookSquares -> piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(rookSquares)) }
-        }
-        piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(movement.from))
-        piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(movement.to))
-        if (enPassantTarget != null) {
-            piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(enPassantTarget!!))
-        }
-        if (lastEnPassantTarget != null) {
-            piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(lastEnPassantTarget))
-            if (lastEnPassantPawnPosition != null) {
-                piecesToBeReprocessed.addAll(piecesThatNeedReprocessingAtSquare(lastEnPassantPawnPosition))
-            }
-        }
-        if (castlingKingsideAllowed[currentTurnColor]!! || castlingQueensideAllowed[currentTurnColor]!!) {
-            // If castling is still available, reprocess kings movement every time
-            val king = board.pieces[currentTurnColor]!!.find { p -> p.type == PieceType.KING }!!
-            piecesToBeReprocessed.add(king)
-        }
-
-        if ((pieceCaptured.isPresent && pieceCaptured.get().type == PieceType.ROOK)
-            || castlingKingsideAllowed[opponentColor]!! || castlingQueensideAllowed[opponentColor]!!) {
-            // If a rook is captured, we need to re-evaluate opponent king's movements, since castling is now disabled
-            // Also, if castling is still enabled for opponent, check movement since king might be in check now
-            val king = board.pieces[opponentColor]!!.find { p -> p.type == PieceType.KING }!!
-            piecesToBeReprocessed.add(king)
-        }
-        if (piece.type == PieceType.ROOK) {
-            // If a rook is moved, we need to re-evaluate our own king's movements, since castling is now disabled
-            val king = board.pieces[currentTurnColor]!!.find { p -> p.type == PieceType.KING }!!
-            piecesToBeReprocessed.add(king)
-        }
-
-        // Reprocess movements for pieces
-        piecesToBeReprocessed.forEach { pieceToReprocess -> pieceToReprocess.reprocessAvailableMovements(this) }
 
         currentTurnColor = if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE
+        MovementService.reprocessAllAvailableMovements(this)
     }
 
-    private fun piecesThatNeedReprocessingAtSquare(position: Position): Set<Piece> {
-        val piecesToBeReprocessed = mutableSetOf<Piece>()
-        board.pieces.forEach { (_, pieces) -> pieces.forEach { piece ->
-            if (piece.pseudoLegalMovements.find { movement -> movement.to == position } != null) {
-                piecesToBeReprocessed.add(piece)
+    fun unmakeMovement() {
+        val (movement, previousKingsideCastling, previousQueensideCastling, previousEnPassantTarget) = gameHistory.pop()
+        castlingKingsideAllowed = previousKingsideCastling
+        castlingQueensideAllowed = previousQueensideCastling
+        enPassantTarget = previousEnPassantTarget
+
+        val initialKingRank = if (movement.piece.color == Color.WHITE) 0 else 7
+        if (movement.notation == NotationService.kingsideCastleNotation) {
+            val rook = board.pieceAt(PositionHelper.toLong(initialKingRank, 5))!!
+            val king = board.pieceAt(PositionHelper.toLong(initialKingRank, 6))!!
+
+            board.piecePositions.remove(rook.position)
+            rook.position = rook.position.shl(2)
+            board.piecePositions[rook.position] = rook
+
+            board.piecePositions.remove(king.position)
+            king.position = king.position.ushr(2)
+            board.piecePositions[king.position] = king
+        } else if (movement.notation == NotationService.queensideCastleNotation) {
+            val rook = board.pieceAt(PositionHelper.toLong(initialKingRank, 3))!!
+            val king = board.pieceAt(PositionHelper.toLong(initialKingRank, 2))!!
+            board.piecePositions.remove(rook.position)
+            rook.position = rook.position.ushr(3)
+            board.piecePositions[rook.position] = rook
+            board.piecePositions.remove(king.position)
+            king.position = king.position.shl(2)
+            board.piecePositions[king.position] = king
+        } else {
+            board.piecePositions.remove(movement.piece.position)
+            movement.piece.position = movement.from
+            board.piecePositions[movement.piece.position] = movement.piece
+            movement.promotionPiece?.let {
+                // Undo promotion
+                movement.piece.type = PieceType.PAWN
             }
-        } }
-        return piecesToBeReprocessed
+            movement.capturedPiece?.let {
+                board.pieces.add(movement.capturedPiece)
+                board.piecePositions[movement.capturedPiece.position] = movement.capturedPiece
+            }
+        }
+
+        currentTurnColor = if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE
+        MovementService.reprocessAllAvailableMovements(this)
     }
 
     private fun updateCastlingAbility(pieceMoved: Piece) {
@@ -154,34 +138,36 @@ class Game: Serializable {
             castlingQueensideAllowed[currentTurnColor] = false
         }
 
-        if (pieceMoved.type == PieceType.ROOK && pieceMoved.file == Board.MINIMUM_INDEX) {
+        val queensideRookPosition = if (pieceMoved.color == Color.WHITE) 0x01L else PositionHelper.toLong(7, 0)
+        val kingsideRookPosition = if (pieceMoved.color == Color.WHITE) PositionHelper.toLong(0, 7) else PositionHelper.toLong(7, 7)
+
+        if (pieceMoved.type == PieceType.ROOK && pieceMoved.position == queensideRookPosition) {
             castlingQueensideAllowed[currentTurnColor] = false
         }
 
-        if (pieceMoved.type == PieceType.ROOK && pieceMoved.file == Board.MAXIMUM_INDEX) {
+        if (pieceMoved.type == PieceType.ROOK && pieceMoved.position == kingsideRookPosition) {
             castlingKingsideAllowed[currentTurnColor] = false
         }
     }
 
     fun isColorAtCheck(color: Color): Boolean {
-        val king = board.pieces[color]!!.find { p -> p.type == PieceType.KING }!!
+        val king = board.pieces.find { p -> p.type == PieceType.KING && p.color == color }!!
 
-        val opponentMoves = availableMovementsFor(if (color == Color.WHITE) Color.BLACK else Color.WHITE, false)
-        val checkMove = opponentMoves.find { move -> move.to.rank == king.rank && move.to.file == king.file }
+        val opponentMoves = availableMovementsFor(king.opponentColor, false)
+        val checkMove = opponentMoves.find { move -> move.to == king.position }
         return checkMove != null
     }
 
     fun availableMovementsFor(color: Color, excludeMovementsThatCauseOwnCheck: Boolean = true): List<Movement> {
-        val pieces = board.pieces[color]!!
+        val pieces = board.pieces.filter { piece -> piece.color == color }
 
         return if (excludeMovementsThatCauseOwnCheck)
-            pieces.map { p -> p.legalMovements(this) }.flatten()
+            pieces.map { p -> p.legalMovements(this) }.flatten().filter { m -> !m.isMovementBlocked }
             else pieces.map { p -> p.pseudoLegalMovements }.flatten().filter { m -> !m.isMovementBlocked }
     }
 
     fun getCurrentAdvantage(): Int {
-        val whiteSum = board.pieces[Color.WHITE]!!.fold(0, { acc, piece -> piece.type.value + acc })
-        val blackSum = board.pieces[Color.BLACK]!!.fold(0, { acc, piece -> piece.type.value + acc })
-        return whiteSum - blackSum
+        return board.pieces.fold(0,
+            { acc, piece -> (if (piece.color == Color.WHITE) 1 else -1) * (piece.type.value) + acc })
     }
 }

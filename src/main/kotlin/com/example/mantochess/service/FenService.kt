@@ -1,18 +1,21 @@
 package com.example.mantochess.service
 
 import com.example.mantochess.model.*
+import com.example.mantochess.model.pieces.Piece
 import org.springframework.stereotype.Service
 import java.lang.Integer.parseInt
 
 @Service
-class FenService(val notationService: NotationService) {
+class FenService(private val notationService: NotationService) {
+
+    companion object {
+        const val INITIAL_POSITION_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    }
 
     fun convertFenToGame(fen: String): Game {
-
         val game = Game()
         // Remove all pieces to start
-        game.board.pieces[Color.WHITE]!!.removeAll { _ -> true }
-        game.board.pieces[Color.BLACK]!!.removeAll { _ -> true }
+        game.board.pieces.removeAll { _ -> true }
 
         val ranks = fen.split("/")
 
@@ -20,10 +23,10 @@ class FenService(val notationService: NotationService) {
             throw InvalidFenException("Fen notation should have exactly 8 slashes (/)")
         }
 
-        for (rankIdx in (ranks.size - 1) downTo Board.MINIMUM_INDEX) {
+        for (rankIdx in (ranks.size - 1) downTo 0) {
             var fileIdx = 0
 
-            val rank = ranks[Board.MAXIMUM_INDEX - rankIdx].split(" ")[0]
+            val rank = ranks[7 - rankIdx].split(" ")[0]
 
             for (c in rank.toCharArray()) {
                 val pieceType = getPieceType(c)
@@ -32,21 +35,22 @@ class FenService(val notationService: NotationService) {
                     fileIdx += parseInt(c.toString())
                 } else {
                     val color = if (c.isUpperCase()) Color.WHITE else Color.BLACK
-                    game.board.pieces[color]!!.add(Piece(pieceType, color, rankIdx, fileIdx))
+                    game.board.pieces.add(Piece(pieceType, color, PositionHelper.toLong(rankIdx, fileIdx)))
 
                     fileIdx++
                 }
             }
 
             // Verifies if file idx were specified correctly
-            if (fileIdx != Board.MAXIMUM_INDEX + 1) {
+            if (fileIdx != 8) {
                 throw InvalidFenException("Wrong number of files for rank ${8 - rankIdx}")
             }
         }
 
         this.parseGameMetadata(game, ranks[7])
 
-        game.board.pieces.forEach { _, pieces -> pieces.forEach { piece -> piece.reprocessAvailableMovements(game) } }
+        game.board.recalculatePiecePositions()
+        MovementService.reprocessAllAvailableMovements(game)
 
         println("Parsed FEN board")
         game.board.printBoard()
@@ -98,12 +102,11 @@ class FenService(val notationService: NotationService) {
             game.castlingKingsideAllowed[Color.BLACK] = castlingAbility.contains('k')
             game.castlingQueensideAllowed[Color.WHITE] = castlingAbility.contains('Q')
             game.castlingQueensideAllowed[Color.BLACK] = castlingAbility.contains('q')
-
-            game.enPassantTarget = if (enPassetTargetSquare == "-") null else
-                Position(
-                    notationService.convertRankInternal(enPassetTargetSquare[1].toString(), false)!!,
-                    notationService.convertFileInternal(enPassetTargetSquare[0].toString(), false)!!)
         }
+
+        game.enPassantTarget = if (enPassetTargetSquare == "-") null else
+            0x01L.shl(8 * notationService.convertRankInternal(enPassetTargetSquare[1].toString(), false)!! +
+                    notationService.convertFileInternal(enPassetTargetSquare[0].toString(), false)!!)
 
     }
 }

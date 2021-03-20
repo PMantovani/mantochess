@@ -16,7 +16,8 @@ class GameController(
 
     @PostMapping("/new")
     fun newGame(@RequestBody fen: String?): String {
-        val game = if (fen != null) fenService.convertFenToGame(fen) else Game()
+        val filledFen = fen ?: FenService.INITIAL_POSITION_FEN
+        val game = fenService.convertFenToGame(filledFen)
         val gameUuid = UUID.randomUUID().toString()
         cacheService.storeGame(gameUuid, game)
         return gameUuid
@@ -33,6 +34,18 @@ class GameController(
     fun suggestMovement(
         @PathVariable("id") gameUuid: String,
         @RequestParam("max-depth", defaultValue = "3") maxDepth: Int): String {
+        return gameService.suggestGameMovement(gameUuid, false, maxDepth)
+    }
+
+    @PostMapping("/fen/suggest")
+    fun suggestFenMovement(
+        @RequestParam("fen", defaultValue = FenService.INITIAL_POSITION_FEN) fen: String,
+        @RequestParam("max-depth", defaultValue = "3") maxDepth: Int): String {
+
+        val game = fenService.convertFenToGame(fen)
+        val gameUuid = UUID.randomUUID().toString()
+        cacheService.storeGame(gameUuid, game)
+
         return gameService.suggestGameMovement(gameUuid, false, maxDepth)
     }
 
