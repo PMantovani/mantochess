@@ -14,10 +14,10 @@ class PieceMovements {
         val southeastMovements: HashMap<Long, Long> = HashMap()
         val southwestMovements: HashMap<Long, Long> = HashMap()
         val southMovements: HashMap<Long, Long> = HashMap()
-        val knightMovements: HashMap<Long, ArrayList<Long>> = HashMap()
-        // The first in the pair are non-capture movements, and the second are capture movements
-        val pawnMovements: HashMap<Pair<Color, Long>, Pair<ArrayList<Long>, ArrayList<Long>>> = HashMap()
-        val kingMovements: HashMap<Long, ArrayList<Long>> = HashMap()
+        val knightMovements: HashMap<Long, Long> = HashMap()
+        val pawnNonCaptureMovements: HashMap<Pair<Color, Long>, Long> = HashMap()
+        val pawnCaptureMovements: HashMap<Pair<Color, Long>, Long> = HashMap()
+        val kingMovements: HashMap<Long, Long> = HashMap()
 
         init {
             for (rank in 0..7) {
@@ -41,21 +41,21 @@ class PieceMovements {
         }
 
         private fun computeKingMovements(position: Long, rank: Int, file: Int) {
-            kingMovements[position] = ArrayList()
+            kingMovements[position] = 0L
 
-            if (file > 0) kingMovements[position]!!.add(PositionHelper.toLong(rank, file - 1))
-            if (file < 7) kingMovements[position]!!.add(PositionHelper.toLong(rank, file + 1))
+            if (file > 0) kingMovements[position] = kingMovements[position]!!.or(PositionHelper.toLong(rank, file - 1))
+            if (file < 7) kingMovements[position] = kingMovements[position]!!.or(PositionHelper.toLong(rank, file + 1))
 
             if (rank > 0) {
-                kingMovements[position]!!.add(PositionHelper.toLong(rank - 1, file))
-                if (file > 0) kingMovements[position]!!.add(PositionHelper.toLong(rank - 1, file - 1))
-                if (file < 7) kingMovements[position]!!.add(PositionHelper.toLong(rank - 1, file + 1))
+                kingMovements[position] = kingMovements[position]!!.or(PositionHelper.toLong(rank - 1, file))
+                if (file > 0) kingMovements[position] = kingMovements[position]!!.or(PositionHelper.toLong(rank - 1, file - 1))
+                if (file < 7) kingMovements[position] = kingMovements[position]!!.or(PositionHelper.toLong(rank - 1, file + 1))
             }
 
             if (rank < 7) {
-                kingMovements[position]!!.add(PositionHelper.toLong(rank + 1, file))
-                if (file > 0) kingMovements[position]!!.add(PositionHelper.toLong(rank + 1, file - 1))
-                if (file < 7) kingMovements[position]!!.add(PositionHelper.toLong(rank + 1, file + 1))
+                kingMovements[position] = kingMovements[position]!!.or(PositionHelper.toLong(rank + 1, file))
+                if (file > 0) kingMovements[position] = kingMovements[position]!!.or(PositionHelper.toLong(rank + 1, file - 1))
+                if (file < 7) kingMovements[position] = kingMovements[position]!!.or(PositionHelper.toLong(rank + 1, file + 1))
             }
         }
 
@@ -63,21 +63,22 @@ class PieceMovements {
             for (color in listOf(Color.WHITE, Color.BLACK)) {
                 val directionMultiplier = if (color == Color.WHITE) 1 else -1
                 val initialRank = if (color == Color.WHITE) 1 else 6
-                pawnMovements[Pair(color, position)] = Pair(ArrayList(), ArrayList())
+                pawnNonCaptureMovements[Pair(color, position)] = 0L
+                pawnCaptureMovements[Pair(color, position)] = 0L
 
                 // Simple forward movement
-                pawnMovements[Pair(color, position)]!!.first.add(0x01L.shl(file + 8 * (rank + (1 * directionMultiplier))))
+                pawnNonCaptureMovements[Pair(color, position)] = pawnNonCaptureMovements[Pair(color, position)]!!.or(0x01L.shl(file + 8 * (rank + (1 * directionMultiplier))))
                 if (rank == initialRank) {
                     // Double movement
-                    pawnMovements[Pair(color, position)]!!.first.add(0x01L.shl(file + 8 * (rank + (2 * directionMultiplier))))
+                    pawnNonCaptureMovements[Pair(color, position)] = pawnNonCaptureMovements[Pair(color, position)]!!.or(0x01L.shl(file + 8 * (rank + (2 * directionMultiplier))))
                 }
                 if (file > 0) {
                     // Add left-capturing diagonal
-                    pawnMovements[Pair(color, position)]!!.second.add(0x01L.shl((file - 1) + 8 * (rank + (1 * directionMultiplier))))
+                    pawnCaptureMovements[Pair(color, position)] = pawnCaptureMovements[Pair(color, position)]!!.or(0x01L.shl((file - 1) + 8 * (rank + (1 * directionMultiplier))))
                 }
                 if (file < 7) {
                     // Add right-capturing diagonal
-                    pawnMovements[Pair(color, position)]!!.second.add(0x01L.shl((file + 1) + 8 * (rank + (1 * directionMultiplier))))
+                    pawnCaptureMovements[Pair(color, position)] = pawnCaptureMovements[Pair(color, position)]!!.or(0x01L.shl((file + 1) + 8 * (rank + (1 * directionMultiplier))))
                 }
             }
         }
@@ -162,37 +163,37 @@ class PieceMovements {
 
         private fun computeKnightMovements(rank: Int, file: Int) {
             val knightPosition = PositionHelper.toLong(rank, file)
-            knightMovements[knightPosition] = ArrayList()
+            knightMovements[knightPosition] = 0L
             if (rank > 1) {
                 if (file > 0) {
-                    knightMovements[knightPosition]!!.add(PositionHelper.toLong(rank - 2, file - 1))
+                    knightMovements[knightPosition] = knightMovements[knightPosition]!!.or(PositionHelper.toLong(rank - 2, file - 1))
                 }
                 if (file < 7) {
-                    knightMovements[knightPosition]!!.add(PositionHelper.toLong(rank - 2, file + 1))
+                    knightMovements[knightPosition] = knightMovements[knightPosition]!!.or(PositionHelper.toLong(rank - 2, file + 1))
                 }
             }
             if (rank > 0) {
                 if (file > 1) {
-                    knightMovements[knightPosition]!!.add(PositionHelper.toLong(rank - 1, file - 2))
+                    knightMovements[knightPosition] = knightMovements[knightPosition]!!.or(PositionHelper.toLong(rank - 1, file - 2))
                 }
                 if (file < 6) {
-                    knightMovements[knightPosition]!!.add(PositionHelper.toLong(rank - 1, file + 2))
+                    knightMovements[knightPosition] = knightMovements[knightPosition]!!.or(PositionHelper.toLong(rank - 1, file + 2))
                 }
             }
             if (rank < 6) {
                 if (file > 0) {
-                    knightMovements[knightPosition]!!.add(PositionHelper.toLong(rank + 2, file - 1))
+                    knightMovements[knightPosition] = knightMovements[knightPosition]!!.or(PositionHelper.toLong(rank + 2, file - 1))
                 }
                 if (file < 7) {
-                    knightMovements[knightPosition]!!.add(PositionHelper.toLong(rank + 2, file + 1))
+                    knightMovements[knightPosition] = knightMovements[knightPosition]!!.or(PositionHelper.toLong(rank + 2, file + 1))
                 }
             }
             if (rank < 7) {
                 if (file > 1) {
-                    knightMovements[knightPosition]!!.add(PositionHelper.toLong(rank + 1, file - 2))
+                    knightMovements[knightPosition] = knightMovements[knightPosition]!!.or(PositionHelper.toLong(rank + 1, file - 2))
                 }
                 if (file < 6) {
-                    knightMovements[knightPosition]!!.add(PositionHelper.toLong(rank + 1, file + 2))
+                    knightMovements[knightPosition] = knightMovements[knightPosition]!!.or(PositionHelper.toLong(rank + 1, file + 2))
                 }
             }
         }

@@ -51,6 +51,7 @@ class GameService(
 
             returnStr += "Depth: $maxDepth\n"
             returnStr += "Total nodes: $total\n"
+            returnStr += "Nodes per sec: ${total/(ellapsedTime / 1000.0)/1000.0} kN/s\n"
             returnStr += "Game advantage: ${suggestedMovement.first}\n"
             returnStr += "Suggested move: ${notationService.convertMovementToNotation(suggestedMovement.second!!)}\n"
             print(returnStr)

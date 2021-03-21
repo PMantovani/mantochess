@@ -163,7 +163,7 @@ class Game: Serializable {
 
         return if (excludeMovementsThatCauseOwnCheck)
             pieces.map { p -> p.legalMovements(this) }.flatten().filter { m -> !m.isMovementBlocked }
-            else pieces.map { p -> p.pseudoLegalMovements }.flatten().filter { m -> !m.isMovementBlocked }
+            else pieces.map { p -> MovementService.convertToMovementList(this, p) }.flatten().filter { m -> !m.isMovementBlocked }
     }
 
     fun getCurrentAdvantage(): Int {

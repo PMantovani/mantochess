@@ -52,9 +52,6 @@ class FenService(private val notationService: NotationService) {
         game.board.recalculatePiecePositions()
         MovementService.reprocessAllAvailableMovements(game)
 
-        println("Parsed FEN board")
-        game.board.printBoard()
-
         return game
     }
 

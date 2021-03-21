@@ -7,21 +7,22 @@ import java.io.Serializable
 
 class Piece(var type: PieceType, val color: Color, var position: Long): Serializable {
 
-    var pseudoLegalMovements: List<Movement> = mutableListOf()
+    var pseudoLegalMovements: Long = 0L
     var emptyBoardMovements: Long = 0L
     val opponentColor = if (color == Color.WHITE) Color.BLACK else Color.WHITE
 
     fun legalMovements(game: Game): List<Movement> {
-        return pseudoLegalMovements.filter { movement -> !movement.isMovementBlocked && !movementCauseOwnCheck(game, movement) }
+        return MovementService.convertToMovementList(game, this)
+            .filter { movement -> !movement.isMovementBlocked && !movementCauseOwnCheck(game, movement) }
     }
 
     fun isAttackingSquare(square: Long): Boolean {
-        if (type == PieceType.PAWN) {
+        return if (type == PieceType.PAWN) {
             // Pawn is attacking squares that are not in its pseudoLegalMovements (diagonals), so the logic should include
             // squares in empty board movements instead.
-            return emptyBoardMovements.and(square) != 0L
+            emptyBoardMovements.and(square) != 0L
         } else {
-            return pseudoLegalMovements.find { movement -> movement.to == square } != null
+            pseudoLegalMovements.and(square) != 0L
         }
     }
 
