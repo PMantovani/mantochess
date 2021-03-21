@@ -16,13 +16,13 @@ class Piece(var type: PieceType, val color: Color, var position: Long): Serializ
             .filter { movement -> !movement.isMovementBlocked && !movementCauseOwnCheck(game, movement) }
     }
 
-    fun isAttackingSquare(square: Long): Boolean {
+    fun isAttackingSquares(squares: Long): Boolean {
         return if (type == PieceType.PAWN) {
             // Pawn is attacking squares that are not in its pseudoLegalMovements (diagonals), so the logic should include
             // squares in empty board movements instead.
-            emptyBoardMovements.and(square) != 0L
+            emptyBoardMovements.and(squares) != 0L
         } else {
-            pseudoLegalMovements.and(square) != 0L
+            pseudoLegalMovements.and(squares) != 0L
         }
     }
 

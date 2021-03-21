@@ -108,13 +108,11 @@ class MovementService {
             if (game.castlingKingsideAllowed[piece.color]!!) {
                 val initialRank = if (piece.color == Color.WHITE) 0 else 7
 
-                val mustBeEmptySquares = listOf(
-                    PositionHelper.toLong(initialRank, 5),
-                    PositionHelper.toLong(initialRank, 6))
-                val mustBeNonAttackedSquares = listOf(
-                    PositionHelper.toLong(initialRank, 4),
-                    PositionHelper.toLong(initialRank, 5),
-                    PositionHelper.toLong(initialRank, 6))
+                val mustBeEmptySquares = PositionHelper.toLong(initialRank, 5)
+                    .or(PositionHelper.toLong(initialRank, 6))
+                val mustBeNonAttackedSquares = PositionHelper.toLong(initialRank, 4)
+                    .or(PositionHelper.toLong(initialRank, 5))
+                    .or(PositionHelper.toLong(initialRank, 6))
 
                 if (otherPiecesAllowCastle(piece, mustBeEmptySquares, mustBeNonAttackedSquares, game)) {
                     return PositionHelper.toLong(initialRank, 6)
@@ -127,14 +125,12 @@ class MovementService {
             if (game.castlingQueensideAllowed[piece.color]!!) {
                 val initialRank = if (piece.color == Color.WHITE) 0 else 7
 
-                val mustBeEmptySquares = listOf(
-                    PositionHelper.toLong(initialRank, 1),
-                    PositionHelper.toLong(initialRank, 2),
-                    PositionHelper.toLong(initialRank, 3))
-                val mustBeNonAttackedSquares = listOf(
-                    PositionHelper.toLong(initialRank, 2),
-                    PositionHelper.toLong(initialRank, 3),
-                    PositionHelper.toLong(initialRank, 4))
+                val mustBeEmptySquares = PositionHelper.toLong(initialRank, 1)
+                    .or(PositionHelper.toLong(initialRank, 2))
+                    .or(PositionHelper.toLong(initialRank, 3))
+                val mustBeNonAttackedSquares = PositionHelper.toLong(initialRank, 2)
+                    .or(PositionHelper.toLong(initialRank, 3))
+                    .or(PositionHelper.toLong(initialRank, 4))
 
                 if (otherPiecesAllowCastle(piece, mustBeEmptySquares, mustBeNonAttackedSquares, game)) {
                     return PositionHelper.toLong(initialRank, 2)
@@ -143,13 +139,12 @@ class MovementService {
             return 0L
         }
 
-        private fun otherPiecesAllowCastle(piece: Piece, mustBeEmptySquares: List<Long>, mustBeNonAttackedSquares: List<Long>, game: Game): Boolean {
-            val intercept = mustBeEmptySquares.find { square -> game.board.pieceAt(square) != null }
-            if (intercept == null) {
+        private fun otherPiecesAllowCastle(piece: Piece, mustBeEmptySquares: Long, mustBeNonAttackedSquares: Long, game: Game): Boolean {
+            val intercept = mustBeEmptySquares.and(game.board.whitePositions.or(game.board.blackPositions)) != 0L
+            if (!intercept) {
 
-                val attackingPiece = mustBeNonAttackedSquares.find { square ->
-                    game.board.pieces.find { p -> p.color == piece.opponentColor && p.isAttackingSquare(square) } != null
-                }
+                val attackingPiece = game.board.pieces
+                    .find { p -> p.color == piece.opponentColor && p.isAttackingSquares(mustBeNonAttackedSquares) }
 
                 return attackingPiece == null
             }
