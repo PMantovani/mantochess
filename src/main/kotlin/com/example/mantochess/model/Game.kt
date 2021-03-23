@@ -21,7 +21,13 @@ class Game: Serializable {
     }
 
     fun makeMovement(movement: Movement) {
-        gameHistory.push(GameHistoryData(movement, castlingKingsideAllowed.toMutableMap(), castlingQueensideAllowed.toMutableMap(), enPassantTarget))
+        gameHistory.push(GameHistoryData(
+            movement,
+            castlingKingsideAllowed.toMutableMap(),
+            castlingQueensideAllowed.toMutableMap(),
+            enPassantTarget,
+            board.pieces.map { p -> p to p.pseudoLegalMovements }.toMap()
+        ))
 
         val opponentColor = if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE
 
@@ -88,7 +94,7 @@ class Game: Serializable {
     }
 
     fun unmakeMovement() {
-        val (movement, previousKingsideCastling, previousQueensideCastling, previousEnPassantTarget) = gameHistory.pop()
+        val (movement, previousKingsideCastling, previousQueensideCastling, previousEnPassantTarget, previousMovements) = gameHistory.pop()
         castlingKingsideAllowed = previousKingsideCastling
         castlingQueensideAllowed = previousQueensideCastling
         enPassantTarget = previousEnPassantTarget
@@ -129,7 +135,7 @@ class Game: Serializable {
         }
 
         currentTurnColor = if (currentTurnColor == Color.WHITE) Color.BLACK else Color.WHITE
-        MovementService.reprocessAllAvailableMovements(this)
+        board.pieces.forEach { p -> p.pseudoLegalMovements = previousMovements[p]!! }
     }
 
     private fun updateCastlingAbility(pieceMoved: Piece) {
